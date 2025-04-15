@@ -232,6 +232,7 @@ def handle_text_message(event):
         reply_message = FlexMessage(alt_text='法事服務項目說明', contents=ritual_bubble)
 
     # --- 其他關鍵字處理 (問事/命理, 開運物, 生基品, 收驚, 卜卦) ---
+    # (與上次相同)
     elif '問事' in text or '命理' in text:
         guangzhou_consult_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行問事或命理諮詢，歡迎預約。\n\n"
         reply_text = ("【問事/命理諮詢】\n服務內容包含八字命盤分析、流年運勢、事業財運、感情姻緣等。\n\n" + guangzhou_consult_reminder + "如需預約，請直接輸入「預約」關鍵字。")
@@ -315,14 +316,19 @@ def handle_postback(event):
                      print(f"警告：Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
                      reply_message = TextMessage(text="系統錯誤：選項資料過長，請稍後再試。")
                 else:
-                    min_date = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%d')
+                    # *** 修改處：產生包含 T00:00 的最小日期時間字串 ***
+                    min_datetime_str = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%dT00:00')
+
                     bubble = FlexBubble(
                         body=FlexBox(layout='vertical', contents=[
                             FlexText(text=f'您選擇了：{selected_service}', weight='bold', align='center', margin='md'),
                             FlexText(text='請選擇您希望預約的日期與時間', align='center', margin='md', size='sm'),
                             FlexButton(
                                 action=DatetimePickerAction(
-                                    label='📅 選擇日期時間', data=picker_data, mode='datetime', min=min_date
+                                    label='📅 選擇日期時間',
+                                    data=picker_data,
+                                    mode='datetime', # 模式是 datetime
+                                    min=min_datetime_str # <-- 使用包含時間的 min 值
                                 ),
                                 style='primary', color='#A67B5B', margin='lg'
                             )
@@ -356,7 +362,7 @@ def handle_postback(event):
                             proceed_booking = False
 
                     if proceed_booking:
-                        # *** 修改處：將預約資訊印到日誌，而不是發送 Push Message ***
+                        # 將預約資訊印到日誌
                         notification_text = (
                             f"【預約請求記錄】\n"
                             f"--------------------\n"
@@ -366,15 +372,15 @@ def handle_postback(event):
                             f"--------------------\n"
                             f"（此訊息已記錄在後台日誌，請手動處理）"
                         )
-                        print(notification_text) # <<< 主要修改：印出日誌
+                        print(notification_text)
                         print("預約請求已記錄到日誌。")
 
-                        # 回覆客戶，告知請求已收到 (修改措辭)
+                        # 回覆客戶，告知請求已收到
                         reply_text_to_user = (
                             f"收到您的預約請求：\n"
                             f"服務：{selected_service}\n"
                             f"時間：{formatted_dt}\n\n"
-                            f"此預約已記錄，將由老師為您處理後續確認事宜，感謝您的耐心等候！" # <<< 修改措辭
+                            f"此預約已記錄，將由老師為您處理後續確認事宜，感謝您的耐心等候！"
                         )
                         reply_message = TextMessage(text=reply_text_to_user)
 
