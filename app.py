@@ -38,14 +38,14 @@ app = Flask(__name__)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
 # Google Calendar API 設定
-calendar_id = os.getenv('YOUR_CALENDAR_ID', '') # Use the same env var name as in the guide
+calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '') # 使用者指定的環境變數名稱
 google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '') # Env var to hold the JSON content directly
 
 if not channel_access_token or not channel_secret:
     print("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
     # Consider exiting or raising an error in a real application
 if not calendar_id:
-    print("警告：未設定 YOUR_CALENDAR_ID 環境變數，無法查詢日曆")
+    print("警告：未設定 GOOGLE_CALENDAR_ID 環境變數，無法查詢日曆")
 if not google_credentials_json:
     print("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數，無法連接 Google Calendar")
 
@@ -85,8 +85,9 @@ def check_ritual_availability_on_date(target_date):
     返回 True 表示 '可以' 進行法事，False 表示 '不可以'。
     """
     # 廣州行程期間 (4/11 - 4/22) 無法進行法事
-    guangzhou_start = datetime.date(target_date.year, 4, 11)
-    guangzhou_end = datetime.date(target_date.year, 4, 22)
+    current_year = datetime.date.today().year
+    guangzhou_start = datetime.date(current_year, 4, 11)
+    guangzhou_end = datetime.date(current_year, 4, 22)
     if guangzhou_start <= target_date <= guangzhou_end:
         return False # 在廣州期間，不能做法事
 
@@ -109,7 +110,7 @@ def get_calendar_events_for_date(target_date):
         end_time = datetime.datetime.combine(target_date, datetime.time.max, tzinfo=TW_TIMEZONE)
 
         events_result = service.events().list(
-            calendarId=calendar_id,
+            calendarId=calendar_id, # 使用從環境變數讀取的 calendar_id
             timeMin=start_time.isoformat(),
             timeMax=end_time.isoformat(),
             singleEvents=True,
@@ -145,6 +146,9 @@ def handle_follow(event):
     print(f"User {user_id} added the bot.")
 
     # 建立歡迎訊息 (Flex Message)
+    current_year = datetime.date.today().year
+    guangzhou_reminder_text = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停，詳情請輸入關鍵字查詢。'
+
     bubble = FlexBubble(
         body=FlexBox(
             layout='vertical',
@@ -160,13 +164,13 @@ def handle_follow(event):
                 FlexText(text='🔹 生基品', size='md', margin='sm'),
                 FlexText(text='🔹 收驚', size='md', margin='sm'),
                 FlexText(text='🔹 卜卦', size='md', margin='sm'),
-                FlexText(text='🔹 查詢 YYYY-MM-DD (查詢日期行程)', size='md', margin='sm'),
+                FlexText(text='🔹 查詢 YYYY-MM-DD (查詢日期行程)', size='md', margin='sm'), # 修改提示格式
                 FlexSeparator(margin='lg'),
                 FlexText(text='匯款資訊', weight='bold', size='lg', margin='md', color='#B28E49'),
                 FlexText(text='🌟 銀行：822 中國信託', size='md'),
                 FlexText(text='🌟 帳號：510540490990', size='md'),
                 FlexSeparator(margin='lg'),
-                 FlexText(text='🗓️ 特別提醒：4/11 至 4/22 老師在廣州，部分服務（如法事）暫停，詳情請輸入關鍵字查詢。', wrap=True, size='xs', color='#E53E3E', margin='md')
+                 FlexText(text=guangzhou_reminder_text, wrap=True, size='xs', color='#E53E3E', margin='md')
             ]
         )
     )
@@ -192,6 +196,7 @@ def handle_text_message(event):
 
     # 獲取今天的日期 (台灣時間)
     today = datetime.datetime.now(TW_TIMEZONE).date()
+    current_year = today.year # 動態獲取當前年份
 
     # --- 處理日期查詢 ---
     if text.startswith('查詢') and len(text.split()) == 2:
@@ -215,29 +220,37 @@ def handle_text_message(event):
                 for item in events:
                     summary = item.get('summary', '忙碌')
                     start_info = item['start'].get('dateTime', item['start'].get('date'))
-                    end_info = item['end'].get('dateTime', item['end'].get('date'))
                     # 簡單格式化時間
                     try:
-                        start_dt = datetime.datetime.fromisoformat(start_info).astimezone(TW_TIMEZONE)
-                        time_str = start_dt.strftime('%H:%M')
-                    except: # 如果是全天事件或格式錯誤
-                        time_str = "全天"
+                        # 處理日期時間字串
+                        if 'T' in start_info: # DateTime
+                           start_dt = datetime.datetime.fromisoformat(start_info).astimezone(TW_TIMEZONE)
+                           time_str = start_dt.strftime('%H:%M')
+                        else: # Date (All-day event)
+                           time_str = "全天"
+                    except ValueError: # 如果格式錯誤
+                        time_str = "時間格式錯誤"
+                    except Exception as e: # 其他可能的錯誤
+                        print(f"解析時間錯誤: {start_info}, {e}")
+                        time_str = "時間解析錯誤"
+
                     busy_times.append(f"{time_str} ({summary})")
 
                 reply_text = f"🗓️ {target_date.strftime('%Y-%m-%d')} 老師行程：\n" + "\n".join(f"- {t}" for t in busy_times)
                 if not can_do_ritual:
-                    reply_text += "\n\n⚠️ 請注意：此日期無法進行『法事』項目。"
+                    reply_text += f"\n\n⚠️ 請注意：此日期（{current_year}/4/11 - {current_year}/4/22 期間）無法進行『法事』項目。"
 
             reply_message = TextMessage(text=reply_text)
 
         except (ValueError, IndexError):
-            reply_message = TextMessage(text="日期格式錯誤，請輸入「查詢 YYYY-MM-DD」格式，例如：「查詢 2025-04-18」")
+            reply_message = TextMessage(text="日期格式錯誤，請輸入「查詢 YYYY-MM-DD」格式，例如：「查詢 2025-04-18」") # 修改提示格式
         except Exception as e:
             print(f"處理查詢時發生錯誤: {e}")
             reply_message = TextMessage(text="查詢時發生內部錯誤，請稍後再試。")
 
     # --- 處理關鍵字 ---
     elif '法事' in text:
+        guangzhou_ritual_reminder = f'❗️ {current_year}/4/11 至 {current_year}/4/22 老師在廣州，期間無法進行任何法事項目，敬請見諒。'
         # 建立法事說明的 Flex Message
         ritual_bubble = FlexBubble(
             direction='ltr',
@@ -267,7 +280,7 @@ def handle_text_message(event):
                     FlexText(text='🌟 帳號：510540490990'),
                     FlexSeparator(margin='lg'),
                     FlexText(text='⚠️ 特別提醒', weight='bold', color='#E53E3E'),
-                    FlexText(text='❗️ 4/11 至 4/22 老師在廣州，期間無法進行任何法事項目，敬請見諒。', wrap=True, size='sm', color='#E53E3E'),
+                    FlexText(text=guangzhou_ritual_reminder, wrap=True, size='sm', color='#E53E3E'),
                     FlexText(text='❓ 如有特殊需求，請直接私訊老師。', size='xs', margin='md', color='#777777')
                 ]
             ),
@@ -287,53 +300,49 @@ def handle_text_message(event):
         reply_message = FlexMessage(alt_text='法事服務項目說明', contents=ritual_bubble)
 
     elif '問事' in text or '命理' in text:
+        guangzhou_consult_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行問事或命理諮詢，歡迎預約。\n\n"
         reply_text = (
             "【問事/命理諮詢】\n"
             "服務內容包含八字命盤分析、流年運勢、事業財運、感情姻緣等。\n\n"
-            "🗓️ 老師行程：\n"
-            "🔹 4/11 - 4/22 期間老師在廣州，但仍可透過線上方式進行問事或命理諮詢，歡迎預約。\n\n"
-            "請使用「查詢 YYYY-MM-DD」格式查詢老師是否有空，或直接私訊預約。"
+            + guangzhou_consult_reminder +
+            "請使用「查詢 YYYY-MM-DD」格式查詢老師是否有空，或直接私訊預約。" # 修改提示格式
         )
         reply_message = TextMessage(text=reply_text)
 
     elif '開運物' in text:
+        guangzhou_shopping_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n🔹 如有特定需求或想預購，歡迎私訊老師。\n🔹 商品預計於老師回台後 ({current_year}/4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
         reply_text = (
             "【開運物品】\n"
             "提供招財符咒、開運手鍊、化煞吊飾、五行調和香氛等，均由老師親自開光加持。\n\n"
-            "🛍️ 最新消息：\n"
-            "🔹 4/11 - 4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n"
-            "🔹 如有特定需求或想預購，歡迎私訊老師。\n"
-            "🔹 商品預計於老師回台後 (4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
+            + guangzhou_shopping_reminder
         )
         reply_message = TextMessage(text=reply_text)
 
     elif '生基品' in text:
+         guangzhou_shengji_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n🔹 如有興趣或需求，歡迎私訊老師洽詢。\n🔹 相關用品預計於老師回台後 ({current_year}/4/22之後) 整理寄出。"
          reply_text = (
             "【生基用品】\n"
             "生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n"
             "老師提供相關諮詢與必需品代尋服務。\n\n"
-            "🛍️ 最新消息：\n"
-            "🔹 4/11 - 4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n"
-            "🔹 如有興趣或需求，歡迎私訊老師洽詢。\n"
-            "🔹 相關用品預計於老師回台後 (4/22之後) 整理寄出。"
+            + guangzhou_shengji_reminder
         )
          reply_message = TextMessage(text=reply_text)
 
     elif '收驚' in text:
+        guangzhou_shoujing_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可提供遠距離線上收驚服務，效果一樣，歡迎私訊預約。"
         reply_text = (
             "【收驚服務】\n"
             "適用於受到驚嚇、心神不寧、睡眠品質不佳等狀況。\n\n"
-            "🗓️ 老師行程：\n"
-            "🔹 4/11 - 4/22 期間老師在廣州，但仍可提供遠距離線上收驚服務，效果一樣，歡迎私訊預約。"
+            + guangzhou_shoujing_reminder
         )
         reply_message = TextMessage(text=reply_text)
 
     elif '卜卦' in text:
+        guangzhou_bugua_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行卜卦，歡迎私訊提問。"
         reply_text = (
             "【卜卦問事】\n"
             "針對特定問題提供指引，例如決策、尋物、運勢吉凶等。\n\n"
-            "🗓️ 老師行程：\n"
-            "🔹 4/11 - 4/22 期間老師在廣州，但仍可透過線上方式進行卜卦，歡迎私訊提問。"
+            + guangzhou_bugua_reminder
         )
         reply_message = TextMessage(text=reply_text)
 
@@ -341,6 +350,7 @@ def handle_text_message(event):
     else:
         # 如果不是查詢格式，且不是已知關鍵字，發送預設提示
         if not text.startswith('查詢'):
+             default_guangzhou_reminder = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停。'
              default_bubble = FlexBubble(
                 body=FlexBox(
                     layout='vertical',
@@ -355,9 +365,9 @@ def handle_text_message(event):
                         FlexText(text='🔹 生基品'),
                         FlexText(text='🔹 收驚'),
                         FlexText(text='🔹 卜卦'),
-                        FlexText(text='🔹 查詢 YYYY-MM-DD'),
+                        FlexText(text='🔹 查詢 YYYY-MM-DD'), # 修改提示格式
                         FlexSeparator(margin='lg'),
-                        FlexText(text='🗓️ 特別提醒：4/11 至 4/22 老師在廣州，部分服務（如法事）暫停。', wrap=True, size='xs', color='#E53E3E', margin='md')
+                        FlexText(text=default_guangzhou_reminder, wrap=True, size='xs', color='#E53E3E', margin='md')
                     ]
                 )
             )
@@ -385,27 +395,3 @@ if __name__ == "__main__":
     # 啟動 Flask 應用程式，監聽所有 IP 地址
     # debug=False 在生產環境中更安全
     app.run(host='0.0.0.0', port=port, debug=False)
-```
-
-**主要變更說明：**
-
-1.  **環境變數調整**：改用 `YOUR_CALENDAR_ID` 和 `GOOGLE_CREDENTIALS_JSON` 作為環境變數名稱，以符合 Render 設定習慣（`GOOGLE_CREDENTIALS_JSON` 預期直接包含 JSON 內容）。
-2.  **新增 `FollowEvent` 處理**：當使用者加入好友時，會發送包含服務列表和匯款資訊的 Flex Message 歡迎訊息。
-3.  **日期可用性檢查 (`check_ritual_availability_on_date`)**：新增此函數，專門檢查特定日期（目前硬編碼為 4/11-4/22）是否因廣州行程而無法進行「法事」。
-4.  **查詢邏輯更新**：
-    * `查詢` 指令現在會調用 `get_calendar_events_for_date` 獲取當日行程。
-    * 同時會調用 `check_ritual_availability_on_date` 檢查該日是否能做法事，並在回覆中加入提醒。
-    * 改善了日曆事件顯示格式。
-5.  **關鍵字回覆更新**：
-    * **法事**：改用 Flex Message 顯示詳細項目、費用、說明、匯款資訊和廣州行程提醒。
-    * **問事/命理、開運物、生基品、收驚、卜卦**：更新了回覆內容，加入了 4/11-4/22 廣州行程的相關說明（哪些服務可用/不可用，商品採購等）。
-    * **預設回覆**：也改用 Flex Message，提供更清晰的引導。
-6.  **Flex Message 使用**：廣泛使用 Flex Message 來提供更豐富、更美觀的訊息格式。
-7.  **程式碼結構與註解**：調整了部分函數和註解，使其更清晰。
-8.  **啟動設定**：`debug=False` 更適合生產環境；Port 預設改為 8080。
-
-**部署前請注意：**
-
-1.  **環境變數**：確保在 Render 上設定了 `LINE_CHANNEL_ACCESS_TOKEN`, `LINE_CHANNEL_SECRET`, `YOUR_CALENDAR_ID`, 以及 `GOOGLE_CREDENTIALS_JSON`（這個變數的值應該是您 Google Service Account 金鑰 JSON 檔案的**完整內容**，而不是檔案路徑）。
-2.  **`requirements.txt`**：確認 `google-api-python-client`, `google-auth-httplib2`, `google-auth-oauthlib`, `pytz`, `line-bot-sdk`, `Flask`, `gunicorn` 都已包含在內。
-3.  **測試**：部署後請務必徹底測試所有關鍵字和查詢功能，特別是日期相關的邏輯和廣州行程的
