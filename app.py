@@ -97,6 +97,7 @@ def get_calendar_events_for_date(target_date):
         start_time = datetime.datetime.combine(target_date, datetime.time.min, tzinfo=TW_TIMEZONE)
         end_time = datetime.datetime.combine(target_date, datetime.time.max, tzinfo=TW_TIMEZONE)
 
+        # 查詢日曆事件
         events_result = service.events().list(
             calendarId=calendar_id,
             timeMin=start_time.isoformat(),
@@ -104,8 +105,10 @@ def get_calendar_events_for_date(target_date):
             singleEvents=True,
             orderBy='startTime'
         ).execute()
+        # 返回事件列表，如果沒有事件則返回空列表 []
         return events_result.get('items', [])
     except Exception as e:
+        # 如果查詢過程中出錯，打印錯誤並返回 None
         print(f"查詢日曆事件時發生錯誤 ({target_date}): {e}")
         return None # 查詢失敗
 
@@ -316,9 +319,7 @@ def handle_postback(event):
                      print(f"警告：Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
                      reply_message = TextMessage(text="系統錯誤：選項資料過長，請稍後再試。")
                 else:
-                    # *** 修改處：產生包含 T00:00 的最小日期時間字串 ***
                     min_datetime_str = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%dT00:00')
-
                     bubble = FlexBubble(
                         body=FlexBox(layout='vertical', contents=[
                             FlexText(text=f'您選擇了：{selected_service}', weight='bold', align='center', margin='md'),
@@ -327,8 +328,8 @@ def handle_postback(event):
                                 action=DatetimePickerAction(
                                     label='📅 選擇日期時間',
                                     data=picker_data,
-                                    mode='datetime', # 模式是 datetime
-                                    min=min_datetime_str # <-- 使用包含時間的 min 值
+                                    mode='datetime',
+                                    min=min_datetime_str
                                 ),
                                 style='primary', color='#A67B5B', margin='lg'
                             )
@@ -354,13 +355,19 @@ def handle_postback(event):
                     if selected_service == '法事':
                         print(f"檢查法事可用性：日期 {selected_date}")
                         events = get_calendar_events_for_date(selected_date)
-                        if events is None:
-                            print(f"警告：無法查詢 {selected_date} 的日曆事件，暫時允許法事預約")
-                        elif len(events) > 0:
-                            print(f"法事預約衝突：{selected_date} 已有行程")
-                            reply_message = TextMessage(text=f"抱歉，老師在 {selected_date.strftime('%Y-%m-%d')} 已有行程安排，暫無法進行法事，請選擇其他日期，謝謝。")
-                            proceed_booking = False
 
+                        # *** 修改處：當 events is None (查詢失敗) 時，阻止預約 ***
+                        if events is None:
+                            print(f"錯誤：無法查詢 {selected_date} 的日曆事件，法事預約失敗")
+                            reply_message = TextMessage(text=f"抱歉，目前無法確認老師 {selected_date.strftime('%Y-%m-%d')} 的行程，請稍後再試或直接私訊老師。")
+                            proceed_booking = False # 阻止預約
+                        elif len(events) > 0:
+                            print(f"法事預約衝突：{selected_date} 已有行程 ({len(events)} 個事件)") # Log 更多資訊
+                            reply_message = TextMessage(text=f"抱歉，老師在 {selected_date.strftime('%Y-%m-%d')} 已有行程安排，暫無法進行法事，請選擇其他日期，謝謝。")
+                            proceed_booking = False # 阻止預約
+                        # else: # events is not None and len(events) == 0 -> proceed_booking 保持 True
+
+                    # --- 若檢查通過或無需檢查 ---
                     if proceed_booking:
                         # 將預約資訊印到日誌
                         notification_text = (
@@ -404,11 +411,11 @@ def handle_postback(event):
         reply_message = TextMessage(text="系統發生錯誤，請稍後再試。")
 
     # --- 發送 Postback 的回覆 ---
+    # *** 注意：PostbackEvent 沒有 reply_token，標準作法是用 Push API 回覆 ***
     if reply_message:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             try:
-                # Postback 標準作法是用 Push API 回覆
                 print(f"準備 Push 回覆給 {user_id}")
                 line_bot_api.push_message(PushMessageRequest(
                     to=user_id,
@@ -421,4 +428,4 @@ def handle_postback(event):
 # --- 主程式入口 ---
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False) # 生產環境建議 debug=False
