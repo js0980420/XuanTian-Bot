@@ -11,7 +11,7 @@ from linebot.v3.messaging import (
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
-    PushMessageRequest, # Keep for potential future use and FollowEvent reply
+    PushMessageRequest,
     TextMessage,
     FlexMessage,
     FlexBubble,
@@ -37,26 +37,23 @@ import pytz
 app = Flask(__name__)
 
 # --- 基本設定 ---
-# LINE Bot API 設定
+# (與上次相同)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
-# Google Calendar API 設定
 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '')
 google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '')
-# *** 老師的 LINE User ID (暫時不用於發送通知，但保留變數) ***
-teacher_user_id = os.getenv('TEACHER_USER_ID', '') # 可以不設定此環境變數
+teacher_user_id = os.getenv('TEACHER_USER_ID', '')
 
 # --- 環境變數檢查 ---
+# (與上次相同)
 if not channel_access_token or not channel_secret:
     print("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
 if not calendar_id:
     print("警告：未設定 GOOGLE_CALENDAR_ID 環境變數，無法查詢日曆")
 if not google_credentials_json:
     print("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數，無法連接 Google Calendar")
-# *** 註解掉 TEACHER_USER_ID 的檢查，因為暫時不用 ***
-# if not teacher_user_id:
+# if not teacher_user_id: # 暫時不用老師 ID
 #     print("警告：未設定 TEACHER_USER_ID 環境變數，無法發送預約通知給老師")
-
 
 # 初始化 LINE Bot API
 configuration = Configuration(access_token=channel_access_token)
@@ -92,25 +89,48 @@ def get_calendar_events_for_date(target_date):
     service = get_google_calendar_service()
     if not service:
         return None # 無法連接服務
-
     try:
         start_time = datetime.datetime.combine(target_date, datetime.time.min, tzinfo=TW_TIMEZONE)
         end_time = datetime.datetime.combine(target_date, datetime.time.max, tzinfo=TW_TIMEZONE)
-
-        # 查詢日曆事件
         events_result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=start_time.isoformat(),
-            timeMax=end_time.isoformat(),
-            singleEvents=True,
-            orderBy='startTime'
+            calendarId=calendar_id, timeMin=start_time.isoformat(), timeMax=end_time.isoformat(),
+            singleEvents=True, orderBy='startTime'
         ).execute()
-        # 返回事件列表，如果沒有事件則返回空列表 []
         return events_result.get('items', [])
     except Exception as e:
-        # 如果查詢過程中出錯，打印錯誤並返回 None
         print(f"查詢日曆事件時發生錯誤 ({target_date}): {e}")
         return None # 查詢失敗
+
+# --- 輔助函數：獲取服務說明文字 ---
+def get_info_text(topic):
+    """根據主題返回說明文字"""
+    current_year = datetime.date.today().year
+    if topic == '開運物':
+        guangzhou_shopping_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n🔹 如有特定需求或想預購，歡迎私訊老師。\n🔹 商品預計於老師回台後 ({current_year}/4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
+        return ("【開運物品】\n提供招財符咒、開運手鍊、化煞吊飾、五行調和香氛等，均由老師親自開光加持。\n\n" + guangzhou_shopping_reminder)
+    elif topic == '生基品':
+         guangzhou_shengji_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n🔹 如有興趣或需求，歡迎私訊老師洽詢。\n🔹 相關用品預計於老師回台後 ({current_year}/4/22之後) 整理寄出。"
+         return ("【生基用品】\n生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n老師提供相關諮詢與必需品代尋服務。\n\n" + guangzhou_shengji_reminder)
+    elif topic == '法事': # 也可用於顯示法事資訊
+        guangzhou_ritual_reminder = f'❗️ {current_year}/4/11 至 {current_year}/4/22 老師在廣州，期間無法進行任何法事項目，敬請見諒。'
+        return (
+            "【法事服務項目】\n旨在透過儀式調和能量，趨吉避凶。\n"
+            "主要項目：\n"
+            "🔹 冤親債主 (處理官司/考運/健康/小人)\n"
+            "🔹 補桃花 (助感情/貴人/客戶)\n"
+            "🔹 補財庫 (助財運/事業/防破財)\n"
+            "費用：單項 NT$680 / 三項合一 NT$1800\n\n"
+            "🔹 祖先相關 (詳情請私訊)\n"
+            "費用：NT$1800 / 份\n\n"
+            "⚠️ 特別提醒：\n" + guangzhou_ritual_reminder + "\n"
+            "❓ 如需預約，請點選下方「預約：法事」按鈕。" # 修改提示
+        )
+    # 可以為其他服務也加入說明
+    # elif topic == '問事/命理':
+    #     ...
+    else:
+        return "抱歉，目前沒有關於「"+topic+"」的詳細說明。"
+
 
 # --- LINE 事件處理函數 ---
 
@@ -132,37 +152,58 @@ def callback():
 
 @handler.add(FollowEvent)
 def handle_follow(event):
-    """處理加好友事件，發送歡迎訊息 (移除匯款資訊和查詢格式)"""
+    """處理加好友事件，發送包含按鈕的歡迎訊息"""
     user_id = event.source.user_id
     print(f"User {user_id} added the bot.")
 
     current_year = datetime.date.today().year
-    guangzhou_reminder_text = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停，詳情請輸入關鍵字查詢。'
+    guangzhou_reminder_text = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停。'
 
+    # --- 建立按鈕 ---
+    buttons = []
+    # 預約類按鈕
+    bookable_services = ["問事/命理", "法事", "收驚", "卜卦"]
+    for service in bookable_services:
+        postback_data = json.dumps({"action": "select_service", "service": service})
+        if len(postback_data) <= 300: # 檢查長度
+            buttons.append(FlexButton(
+                action=PostbackAction(label=f"預約：{service}", data=postback_data, display_text=f"我想預約：{service}"),
+                style='primary', color='#A67B5B', margin='sm', height='sm'
+            ))
+        else:
+            print(f"警告：預約按鈕 Postback data 過長 ({len(postback_data)}): {postback_data}")
+
+    # 資訊類按鈕
+    info_topics = ["開運物", "生基品"]
+    for topic in info_topics:
+        postback_data = json.dumps({"action": "show_info", "topic": topic})
+        if len(postback_data) <= 300: # 檢查長度
+             buttons.append(FlexButton(
+                action=PostbackAction(label=f"了解：{topic}", data=postback_data, display_text=f"我想了解：{topic}"),
+                style='secondary', margin='sm', height='sm' # 使用次要樣式
+            ))
+        else:
+             print(f"警告：資訊按鈕 Postback data 過長 ({len(postback_data)}): {postback_data}")
+
+    # --- 建立 Flex Message ---
     bubble = FlexBubble(
+        header=FlexBox(layout='vertical', padding_all='lg', contents=[
+             FlexText(text='宇宙玄天院 歡迎您！', weight='bold', size='xl', align='center', color='#B28E49'),
+             FlexText(text='點擊下方按鈕選擇服務或了解詳情：', wrap=True, size='sm', color='#555555', align='center', margin='md'),
+        ]),
         body=FlexBox(
             layout='vertical',
-            spacing='md',
-            contents=[
-                FlexText(text='宇宙玄天院 歡迎您！', weight='bold', size='xl', align='center', color='#B28E49'),
-                FlexText(text='感謝您加入好友！我是您的命理小幫手。', wrap=True, size='sm', color='#555555'),
-                FlexSeparator(margin='lg'),
-                FlexText(text='您可以透過輸入關鍵字查詢服務：', wrap=True, size='md', margin='lg'),
-                FlexText(text='🔹 預約 (預約老師服務)', size='md', margin='sm'), # 新增預約提示
-                FlexText(text='🔹 問事 / 命理', size='md', margin='sm'),
-                FlexText(text='🔹 法事', size='md', margin='sm'),
-                FlexText(text='🔹 開運物', size='md', margin='sm'),
-                FlexText(text='🔹 生基品', size='md', margin='sm'),
-                FlexText(text='🔹 收驚', size='md', margin='sm'),
-                FlexText(text='🔹 卜卦', size='md', margin='sm'),
-                FlexSeparator(margin='lg'),
-                FlexText(text=guangzhou_reminder_text, wrap=True, size='xs', color='#E53E3E', margin='md')
-            ]
-        )
+            spacing='sm', # 調整按鈕間距
+            contents=buttons # 將按鈕放入 body
+        ),
+        footer=FlexBox(layout='vertical', contents=[ # 將提醒文字放入 footer
+            FlexSeparator(margin='md'),
+            FlexText(text=guangzhou_reminder_text, wrap=True, size='xs', color='#E53E3E', margin='md', align='center')
+        ])
     )
-    welcome_message = FlexMessage(alt_text='歡迎加入宇宙玄天院', contents=bubble)
+    welcome_message = FlexMessage(alt_text='歡迎加入宇宙玄天院 - 請選擇服務', contents=bubble)
 
-    # 使用 Push API 發送歡迎訊息 (這個 Push 是給新好友的，不是給老師的通知)
+    # 使用 Push API 發送歡迎訊息
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         try:
@@ -176,12 +217,12 @@ def handle_follow(event):
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
-    """處理使用者傳送的文字訊息"""
+    """處理使用者傳送的文字訊息 (主要用於非按鈕觸發的關鍵字)"""
     text = event.message.text.strip().lower()
     reply_message = None
     current_year = datetime.date.today().year
 
-    # --- 處理「預約」關鍵字 ---
+    # --- 處理「預約」關鍵字 (與上次相同，作為備用入口) ---
     if text == '預約':
         service_buttons = []
         bookable_services = ["問事/命理", "法事", "收驚", "卜卦"]
@@ -204,62 +245,32 @@ def handle_text_message(event):
         )
         reply_message = FlexMessage(alt_text='請選擇預約服務', contents=bubble)
 
-    # --- 處理其他關鍵字 (法事說明移除匯款資訊) ---
+    # --- 處理其他關鍵字 (法事、問事、開運物等，作為備用資訊查詢) ---
     elif '法事' in text:
-        guangzhou_ritual_reminder = f'❗️ {current_year}/4/11 至 {current_year}/4/22 老師在廣州，期間無法進行任何法事項目，敬請見諒。'
-        ritual_bubble = FlexBubble(
-            direction='ltr',
-            header=FlexBox(layout='vertical', contents=[
-                FlexText(text='法事服務項目', weight='bold', size='xl', align='center', color='#B28E49')
-            ]),
-            body=FlexBox(
-                layout='vertical', spacing='md',
-                contents=[
-                    FlexText(text='旨在透過儀式調和能量，趨吉避凶。', size='sm', wrap=True, color='#555555'),
-                    FlexSeparator(margin='lg'),
-                    FlexText(text='主要項目', weight='bold', size='lg', margin='md'),
-                    FlexText(text='🔹 冤親債主 (處理官司/考運/健康/小人)', wrap=True),
-                    FlexText(text='🔹 補桃花 (助感情/貴人/客戶)', wrap=True),
-                    FlexText(text='🔹 補財庫 (助財運/事業/防破財)', wrap=True),
-                    FlexText(text='費用：單項 NT$680 / 三項合一 NT$1800', margin='sm', size='sm', weight='bold'),
-                    FlexSeparator(margin='md'),
-                    FlexText(text='🔹 祖先相關 (詳情請私訊)', wrap=True),
-                    FlexText(text='費用：NT$1800 / 份', margin='sm', size='sm', weight='bold'),
-                    FlexSeparator(margin='lg'),
-                    FlexText(text='⚠️ 特別提醒', weight='bold', color='#E53E3E'),
-                    FlexText(text=guangzhou_ritual_reminder, wrap=True, size='sm', color='#E53E3E'),
-                    FlexText(text='❓ 如有特殊需求或預約，請直接輸入「預約」關鍵字。', size='xs', margin='md', color='#777777', wrap=True)
-                ]
-            )
-        )
-        reply_message = FlexMessage(alt_text='法事服務項目說明', contents=ritual_bubble)
-
-    # --- 其他關鍵字處理 (問事/命理, 開運物, 生基品, 收驚, 卜卦) ---
-    # (與上次相同)
+        # 直接使用輔助函數獲取文字，並加上預約提示
+        info_text = get_info_text('法事')
+        reply_message = TextMessage(text=info_text)
     elif '問事' in text or '命理' in text:
         guangzhou_consult_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行問事或命理諮詢，歡迎預約。\n\n"
-        reply_text = ("【問事/命理諮詢】\n服務內容包含八字命盤分析、流年運勢、事業財運、感情姻緣等。\n\n" + guangzhou_consult_reminder + "如需預約，請直接輸入「預約」關鍵字。")
+        reply_text = ("【問事/命理諮詢】\n服務內容包含八字命盤分析、流年運勢、事業財運、感情姻緣等。\n\n" + guangzhou_consult_reminder + "如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。")
         reply_message = TextMessage(text=reply_text)
     elif '開運物' in text:
-        guangzhou_shopping_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n🔹 如有特定需求或想預購，歡迎私訊老師。\n🔹 商品預計於老師回台後 ({current_year}/4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
-        reply_text = ("【開運物品】\n提供招財符咒、開運手鍊、化煞吊飾、五行調和香氛等，均由老師親自開光加持。\n\n" + guangzhou_shopping_reminder)
-        reply_message = TextMessage(text=reply_text)
+        reply_message = TextMessage(text=get_info_text('開運物'))
     elif '生基品' in text:
-         guangzhou_shengji_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n🔹 如有興趣或需求，歡迎私訊老師洽詢。\n🔹 相關用品預計於老師回台後 ({current_year}/4/22之後) 整理寄出。"
-         reply_text = ("【生基用品】\n生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n老師提供相關諮詢與必需品代尋服務。\n\n" + guangzhou_shengji_reminder)
-         reply_message = TextMessage(text=reply_text)
+        reply_message = TextMessage(text=get_info_text('生基品'))
     elif '收驚' in text:
         guangzhou_shoujing_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可提供遠距離線上收驚服務，效果一樣。\n\n"
-        reply_text = ("【收驚服務】\n適用於受到驚嚇、心神不寧、睡眠品質不佳等狀況。\n\n" + guangzhou_shoujing_reminder + "如需預約，請直接輸入「預約」關鍵字。")
+        reply_text = ("【收驚服務】\n適用於受到驚嚇、心神不寧、睡眠品質不佳等狀況。\n\n" + guangzhou_shoujing_reminder + "如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。")
         reply_message = TextMessage(text=reply_text)
     elif '卜卦' in text:
         guangzhou_bugua_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行卜卦。\n\n"
-        reply_text = ("【卜卦問事】\n針對特定問題提供指引，例如決策、尋物、運勢吉凶等。\n\n" + guangzhou_bugua_reminder + "如需預約，請直接輸入「預約」關鍵字。")
+        reply_text = ("【卜卦問事】\n針對特定問題提供指引，例如決策、尋物、運勢吉凶等。\n\n" + guangzhou_bugua_reminder + "如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。")
         reply_message = TextMessage(text=reply_text)
 
     # --- 預設回覆 (如果不是已知關鍵字) ---
     else:
-        if text != '預約':
+        # 避免在用戶點擊按鈕後又觸發預設回覆
+        if text != '預約' and not text.startswith('我想'):
              default_guangzhou_reminder = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停。'
              default_bubble = FlexBubble(
                 body=FlexBox(
@@ -267,8 +278,8 @@ def handle_text_message(event):
                     contents=[
                         FlexText(text='宇宙玄天院 小幫手', weight='bold', size='lg', align='center', color='#B28E49'),
                         FlexText(text='您好！請問需要什麼服務？', wrap=True, size='md', margin='md'),
-                        FlexText(text='請輸入以下關鍵字查詢：', wrap=True, size='sm', color='#555555', margin='lg'),
-                        FlexText(text='🔹 預約 (預約老師服務)'),
+                        FlexText(text='您可以點擊歡迎訊息中的按鈕，或輸入以下關鍵字：', wrap=True, size='sm', color='#555555', margin='lg'),
+                        FlexText(text='🔹 預約'),
                         FlexText(text='🔹 問事 / 命理'),
                         FlexText(text='🔹 法事'),
                         FlexText(text='🔹 開運物'),
@@ -355,21 +366,16 @@ def handle_postback(event):
                     if selected_service == '法事':
                         print(f"檢查法事可用性：日期 {selected_date}")
                         events = get_calendar_events_for_date(selected_date)
-
-                        # *** 修改處：當 events is None (查詢失敗) 時，阻止預約 ***
                         if events is None:
                             print(f"錯誤：無法查詢 {selected_date} 的日曆事件，法事預約失敗")
                             reply_message = TextMessage(text=f"抱歉，目前無法確認老師 {selected_date.strftime('%Y-%m-%d')} 的行程，請稍後再試或直接私訊老師。")
-                            proceed_booking = False # 阻止預約
+                            proceed_booking = False
                         elif len(events) > 0:
-                            print(f"法事預約衝突：{selected_date} 已有行程 ({len(events)} 個事件)") # Log 更多資訊
+                            print(f"法事預約衝突：{selected_date} 已有行程 ({len(events)} 個事件)")
                             reply_message = TextMessage(text=f"抱歉，老師在 {selected_date.strftime('%Y-%m-%d')} 已有行程安排，暫無法進行法事，請選擇其他日期，謝謝。")
-                            proceed_booking = False # 阻止預約
-                        # else: # events is not None and len(events) == 0 -> proceed_booking 保持 True
+                            proceed_booking = False
 
-                    # --- 若檢查通過或無需檢查 ---
                     if proceed_booking:
-                        # 將預約資訊印到日誌
                         notification_text = (
                             f"【預約請求記錄】\n"
                             f"--------------------\n"
@@ -381,8 +387,6 @@ def handle_postback(event):
                         )
                         print(notification_text)
                         print("預約請求已記錄到日誌。")
-
-                        # 回覆客戶，告知請求已收到
                         reply_text_to_user = (
                             f"收到您的預約請求：\n"
                             f"服務：{selected_service}\n"
@@ -400,6 +404,16 @@ def handle_postback(event):
             else:
                 reply_message = TextMessage(text="發生錯誤，缺少預約服務或時間資訊。")
 
+        # --- 新增：處理 show_info Action ---
+        elif action == 'show_info':
+            topic = postback_data.get('topic')
+            if topic:
+                 print(f"用戶 {user_id} 查詢資訊: {topic}")
+                 info_text = get_info_text(topic) # 使用輔助函數獲取文字
+                 reply_message = TextMessage(text=info_text)
+            else:
+                 reply_message = TextMessage(text="抱歉，無法識別您想了解的資訊。")
+
         else:
             print(f"未知的 Postback Action: {action}")
 
@@ -411,7 +425,6 @@ def handle_postback(event):
         reply_message = TextMessage(text="系統發生錯誤，請稍後再試。")
 
     # --- 發送 Postback 的回覆 ---
-    # *** 注意：PostbackEvent 沒有 reply_token，標準作法是用 Push API 回覆 ***
     if reply_message:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
@@ -428,4 +441,4 @@ def handle_postback(event):
 # --- 主程式入口 ---
 if __name__ == "__main__":
     port = int(os.getenv('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False) # 生產環境建議 debug=False
+    app.run(host='0.0.0.0', port=port, debug=False)
