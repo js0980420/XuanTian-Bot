@@ -7,7 +7,7 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
-# *** 修改處：移除 QuickReply 和 QuickReplyButton 從這裡匯入 ***
+# *** 維持移除 QuickReply 和 QuickReplyButton 從這裡匯入 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -25,12 +25,9 @@ from linebot.v3.messaging import (
     URIAction,
     PostbackAction,
     DatetimePickerAction
-    # QuickReply,       <-- Removed
-    # QuickReplyButton  <-- Removed
 )
-# *** 新增：使用更明確的路徑匯入 QuickReply 和 QuickReplyButton ***
-from linebot.v3.messaging.models.quick_reply import QuickReply
-from linebot.v3.messaging.models.quick_reply_button import QuickReplyButton
+# *** 修改處：從正確的 quick_reply 模組同時匯入 QuickReply 和 QuickReplyButton ***
+from linebot.v3.messaging.models.quick_reply import QuickReply, QuickReplyButton
 
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -220,7 +217,7 @@ def handle_text_message(event):
         user_data = state_info["data"]
 
         if text_lower == '取消':
-            del user_states[user_id]
+            if user_id in user_states: del user_states[user_id] # 清除狀態
             reply_message = TextMessage(text="好的，已取消本次命理資訊輸入。")
         elif current_state == "awaiting_birth_year":
             if re.fullmatch(r"\d{4}", text) and 1900 <= int(text) <= now.year:
@@ -238,9 +235,15 @@ def handle_text_message(event):
                 reply_message = TextMessage(text="月份格式錯誤，請輸入1-12的數字 或輸入「取消」。")
         elif current_state == "awaiting_birth_day":
              if re.fullmatch(r"\d{1,2}", text) and 1 <= int(text) <= 31:
-                user_data["day"] = int(text)
-                state_info["state"] = "awaiting_birth_hour"
-                reply_message = TextMessage(text="請輸入您的出生小時 (0-23，例如下午2點請輸入14):")
+                # 可以在此加入更嚴格的日期檢查 (例如檢查 2 月是否有 30 日)
+                try:
+                    # 嘗試組合日期，如果失敗表示日期無效
+                    datetime.date(user_data["year"], user_data["month"], int(text))
+                    user_data["day"] = int(text)
+                    state_info["state"] = "awaiting_birth_hour"
+                    reply_message = TextMessage(text="請輸入您的出生小時 (0-23，例如下午2點請輸入14):")
+                except ValueError:
+                     reply_message = TextMessage(text="日期無效，請檢查您輸入的月份與日期是否正確，或輸入「取消」。")
              else:
                 reply_message = TextMessage(text="日期格式錯誤，請輸入1-31的數字 或輸入「取消」。")
         elif current_state == "awaiting_birth_hour":
@@ -258,12 +261,11 @@ def handle_text_message(event):
              else:
                 reply_message = TextMessage(text="小時格式錯誤，請輸入0-23的數字 或輸入「取消」。")
         elif current_state == "awaiting_topic":
-            topic = text
+            topic = text # 假設用戶會點擊 Quick Reply 或輸入文字
             user_data["topic"] = topic
             birth_info = user_data.get("birth_info", "未提供")
             topic_info = user_data.get("topic", "未提供")
 
-            # *** 恢復發送通知給老師的邏輯 ***
             notification_base_text = (
                 f"【命理問事請求】\n"
                 f"--------------------\n"
@@ -272,7 +274,7 @@ def handle_text_message(event):
                 f"問題主題: {topic_info}\n"
                 f"--------------------"
             )
-            print(f"準備處理命理問事請求: {notification_base_text}") # Log 基本資訊
+            print(f"準備處理命理問事請求: {notification_base_text}")
 
             if teacher_user_id:
                 try:
@@ -280,20 +282,19 @@ def handle_text_message(event):
                     with ApiClient(configuration) as api_client:
                         line_bot_api = MessagingApi(api_client)
                         line_bot_api.push_message(PushMessageRequest(
-                            to=teacher_user_id,
-                            messages=[TextMessage(text=push_notification_text)]
+                            to=teacher_user_id, messages=[TextMessage(text=push_notification_text)]
                         ))
                     print("命理問事通知已發送給老師。")
                 except Exception as e:
                     print(f"錯誤：發送命理問事通知給老師失敗: {e}")
                     print("備份通知到日誌：")
-                    print(notification_base_text + "\n（發送失敗，請查看日誌）") # Log as fallback
+                    print(notification_base_text + "\n（發送失敗，請查看日誌）")
             else:
                 print("警告：未設定老師的 User ID，命理問事通知僅記錄在日誌中。")
-                print(notification_base_text + "\n（未設定老師ID，僅記錄日誌）") # Log if ID not set
+                print(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
 
             reply_message = TextMessage(text=f"收到您的資訊！\n生日時辰：{birth_info}\n問題主題：{topic_info}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！")
-            del user_states[user_id] # 清除狀態
+            if user_id in user_states: del user_states[user_id] # 清除狀態
 
     # --- 如果不在對話流程中，處理一般關鍵字 ---
     else:
@@ -410,7 +411,6 @@ def handle_postback(event):
                      print(f"警告：Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
                      reply_message = TextMessage(text="系統錯誤：選項資料過長，請稍後再試。")
                 else:
-                    # *** 使用修正後的 min 格式 ***
                     min_datetime_str = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%dT00:00')
                     bubble = FlexBubble(
                         body=FlexBox(layout='vertical', contents=[
@@ -421,7 +421,7 @@ def handle_postback(event):
                                     label='📅 選擇日期時間',
                                     data=picker_data,
                                     mode='datetime',
-                                    min=min_datetime_str # 使用 YYYY-MM-DDTHH:mm 格式
+                                    min=min_datetime_str
                                 ),
                                 style='primary', color='#A67B5B', margin='lg'
                             )
