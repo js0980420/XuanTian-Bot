@@ -7,7 +7,7 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
-# *** 維持移除 QuickReply 和 QuickReplyButton 從這裡匯入 ***
+# *** 修改處：改回直接從 messaging 匯入 QuickReply 和 QuickReplyButton ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -24,10 +24,12 @@ from linebot.v3.messaging import (
     MessageAction,
     URIAction,
     PostbackAction,
-    DatetimePickerAction
+    DatetimePickerAction,
+    QuickReply,       # <-- Add back
+    QuickReplyButton  # <-- Add back
 )
-# *** 修改處：從正確的 quick_reply 模組同時匯入 QuickReply 和 QuickReplyButton ***
-from linebot.v3.messaging.models.quick_reply import QuickReply, QuickReplyButton
+# *** 移除之前嘗試的特定路徑匯入 ***
+# from linebot.v3.messaging.models.quick_reply import QuickReply, QuickReplyButton
 
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -235,9 +237,7 @@ def handle_text_message(event):
                 reply_message = TextMessage(text="月份格式錯誤，請輸入1-12的數字 或輸入「取消」。")
         elif current_state == "awaiting_birth_day":
              if re.fullmatch(r"\d{1,2}", text) and 1 <= int(text) <= 31:
-                # 可以在此加入更嚴格的日期檢查 (例如檢查 2 月是否有 30 日)
                 try:
-                    # 嘗試組合日期，如果失敗表示日期無效
                     datetime.date(user_data["year"], user_data["month"], int(text))
                     user_data["day"] = int(text)
                     state_info["state"] = "awaiting_birth_hour"
@@ -261,7 +261,7 @@ def handle_text_message(event):
              else:
                 reply_message = TextMessage(text="小時格式錯誤，請輸入0-23的數字 或輸入「取消」。")
         elif current_state == "awaiting_topic":
-            topic = text # 假設用戶會點擊 Quick Reply 或輸入文字
+            topic = text
             user_data["topic"] = topic
             birth_info = user_data.get("birth_info", "未提供")
             topic_info = user_data.get("topic", "未提供")
