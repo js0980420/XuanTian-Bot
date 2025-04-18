@@ -8,6 +8,7 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
+# *** 修改處：再次註解掉 QuickReply 和 QuickReplyButton 的匯入 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -24,10 +25,13 @@ from linebot.v3.messaging import (
     MessageAction,
     URIAction,
     PostbackAction,
-    DatetimePickerAction,
-    QuickReply,
-    QuickReplyButton
+    DatetimePickerAction #,
+    # QuickReply,       # <-- Commented out
+    # QuickReplyButton  # <-- Commented out
 )
+# *** 移除之前嘗試的特定路徑匯入 (如果存在) ***
+# from linebot.v3.messaging.models.quick_reply import QuickReply, QuickReplyButton
+
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -39,12 +43,13 @@ from googleapiclient.discovery import build
 import pytz
 
 # --- 加入版本標記 ---
-BOT_VERSION = "v1.1.0"
+BOT_VERSION = "v1.2.0" # Increment version
 print(f"運行版本：{BOT_VERSION}")
 
 app = Flask(__name__)
 
 # --- 基本設定 ---
+# (與上次相同)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '')
@@ -52,6 +57,7 @@ google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '')
 teacher_user_id = os.getenv('TEACHER_USER_ID', '')
 
 # --- 環境變數檢查與日誌 ---
+# (與上次相同)
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN: {'已設置' if channel_access_token else '未設置'}")
 print(f"DEBUG: LINE_CHANNEL_SECRET: {'已設置' if channel_secret else '未設置'}")
 print(f"DEBUG: GOOGLE_CALENDAR_ID: {'已設置' if calendar_id else '未設置'}")
@@ -60,13 +66,12 @@ print(f"DEBUG: TEACHER_USER_ID: {teacher_user_id if teacher_user_id else '未設
 
 if not channel_access_token or not channel_secret:
     print("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
-    # 在實際應用中，這裡可能需要引發錯誤或退出
 if not calendar_id:
     print("警告：未設定 GOOGLE_CALENDAR_ID 環境變數，無法查詢日曆")
 if not google_credentials_json:
     print("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數，無法連接 Google Calendar")
-# if not teacher_user_id: # 根據需要取消註解此檢查
-#     print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
+if not teacher_user_id:
+    print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
 
 
 # 初始化 LINE Bot API
@@ -76,7 +81,6 @@ try:
     print("DEBUG: LINE Bot SDK configuration and handler initialized.")
 except Exception as init_err:
     print(f"CRITICAL ERROR: Failed to initialize LINE Bot SDK: {init_err}")
-    # 這裡可能需要更強的錯誤處理，例如退出應用程式
 
 # Google Calendar API 設定
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
@@ -84,9 +88,9 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 # 時區設定
 TW_TIMEZONE = pytz.timezone('Asia/Taipei')
 
-# --- 狀態管理 (簡易版，非生產適用) ---
+# --- 狀態管理 (簡易版，僅用於暫存生日時間) ---
 # !!! 警告：此簡易狀態管理在 Render 等環境下可能因服務重啟或多實例而遺失狀態 !!!
-user_states = {} # {user_id: {"state": "...", "data": {...}}}
+user_states = {} # {user_id: {"state": "awaiting_topic_after_picker", "data": {"birth_info_str": "...", "shichen": "..."}}}
 
 # --- Google Calendar 輔助函數 (與之前相同) ---
 def get_google_calendar_service():
@@ -156,9 +160,10 @@ def get_shichen(hour):
 
 @app.route("/callback", methods=['POST'])
 def callback():
+    # ... (程式碼同上) ...
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
-    app.logger.info(f"Request body: {body}") # 使用 Flask logger
+    app.logger.info(f"Request body: {body}")
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -233,11 +238,11 @@ def handle_text_message(event):
     if user_id in user_states:
         state_info = user_states[user_id]
         current_state = state_info["state"]
-        print(f"DEBUG: User {user_id} is in state '{current_state}'") # Log current state
+        print(f"DEBUG: User {user_id} is in state '{current_state}'")
 
         if text_lower == '取消' or text_lower == '返回':
             if user_id in user_states:
-                print(f"DEBUG: Clearing state for user {user_id} due to cancel/back.") # Log state clear
+                print(f"DEBUG: Clearing state for user {user_id} due to cancel/back.")
                 del user_states[user_id]
             reply_message = TextMessage(text="好的，已取消。請點擊歡迎訊息中的按鈕重新選擇服務。")
 
@@ -246,7 +251,7 @@ def handle_text_message(event):
             birth_info_str = state_info["data"].get("birth_info_str", "未提供")
             shichen = state_info["data"].get("shichen", "未知")
             formatted_birth_info = state_info["data"].get("formatted_birth_info", birth_info_str)
-            print(f"DEBUG: User {user_id} provided topic: '{topic}'") # Log topic received
+            print(f"DEBUG: User {user_id} provided topic: '{topic}'")
 
             notification_base_text = (
                 f"【命理問事請求】\n"
@@ -279,10 +284,9 @@ def handle_text_message(event):
 
             reply_message = TextMessage(text=f"收到您的資訊！\n生日時辰：{formatted_birth_info} ({shichen}時)\n問題主題：{topic}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！")
             if user_id in user_states:
-                print(f"DEBUG: Clearing state for user {user_id} after completion.") # Log state clear
+                print(f"DEBUG: Clearing state for user {user_id} after completion.")
                 del user_states[user_id]
         else:
-             # Handle unexpected state
              print(f"WARN: User {user_id} in unexpected state '{current_state}', clearing state.")
              if user_id in user_states: del user_states[user_id]
              reply_message = TextMessage(text="您目前似乎在進行某個流程，若要重新開始，請點擊歡迎訊息中的按鈕。")
@@ -291,7 +295,6 @@ def handle_text_message(event):
     else:
         # --- 觸發命理問事流程 ---
         if '命理' in text_lower or '問事' in text_lower:
-            # *** 加入您建議的偵錯和錯誤處理 ***
             print(f"DEBUG: Matched '命理' or '問事' for user {user_id}")
             if user_id not in user_states:
                 print(f"DEBUG: User {user_id} not in state, proceeding to ask birth info.")
@@ -306,7 +309,7 @@ def handle_text_message(event):
                     min_date = "1920-01-01T00:00"
                     max_date = now.strftime('%Y-%m-%dT%H:%M')
                     print(f"DEBUG: Creating Flex Bubble for Datetime Picker (min={min_date}, max={max_date})")
-                    try: # <--- 加入 try
+                    try:
                         bubble = FlexBubble(
                             body=FlexBox(layout='vertical', spacing='md', contents=[
                                 FlexText(text='進行命理分析需要您的出生年月日時。', wrap=True, size='md'),
@@ -322,10 +325,10 @@ def handle_text_message(event):
                         )
                         reply_message = FlexMessage(alt_text='請選擇您的出生年月日時', contents=bubble)
                         print(f"DEBUG: Successfully created Flex Message for user {user_id}")
-                    except Exception as e_flex: # <--- 加入 except
+                    except Exception as e_flex:
                         print(f"ERROR: Failed to create Flex Message bubble for user {user_id}: {e_flex}")
-                        app.logger.error(f"FlexMessage creation failed for user {user_id}: {e_flex}") # Log error
-                        reply_message = TextMessage(text="系統錯誤，無法顯示生日選擇器，請稍後再試。") # Fallback reply
+                        app.logger.error(f"FlexMessage creation failed for user {user_id}: {e_flex}")
+                        reply_message = TextMessage(text="系統錯誤，無法顯示生日選擇器，請稍後再試。")
             else:
                  print(f"DEBUG: User {user_id} is already in state: {user_states[user_id]['state']}")
                  reply_message = TextMessage(text="您正在輸入生日資訊，請繼續依照提示操作，或輸入「取消」重新開始。")
@@ -359,8 +362,7 @@ def handle_text_message(event):
 
         # --- 預設回覆 (引導使用按鈕或指定關鍵字) ---
         else:
-            print(f"DEBUG: Received unhandled text from user {user_id}: '{text}'") # 加入日誌
-            # 修改預設回覆，更強調按鈕
+            print(f"DEBUG: Received unhandled text from user {user_id}: '{text}'")
             reply_message = TextMessage(text="請點擊歡迎訊息中的按鈕來選擇服務，或輸入「預約」、「命理」、「問事」來開始互動，謝謝。")
 
 
@@ -369,7 +371,6 @@ def handle_text_message(event):
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             try:
-                # 使用 Reply API 回覆
                 print(f"準備 Reply 回覆給 {user_id} (Token: {reply_token[:10]}...)")
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
@@ -380,11 +381,15 @@ def handle_text_message(event):
                 print(f"Reply 回覆成功 for user {user_id}")
             except Exception as e:
                 print(f"回覆訊息失敗 for user {user_id}: {e}")
-                # 嘗試用 Push API 作為備用 (如果 Reply Token 過期)
                 try:
                     print(f"WARN: Reply failed for {user_id}, attempting Push as fallback.")
+                    # 檢查 reply_message 是否包含 QuickReply，如果是，則轉換為純文字
+                    message_to_push = reply_message
+                    if isinstance(reply_message, TextMessage) and hasattr(reply_message, 'quick_reply') and reply_message.quick_reply:
+                        message_to_push = TextMessage(text=reply_message.text) # 只推送文字部分
+
                     line_bot_api.push_message(PushMessageRequest(
-                        to=user_id, messages=[reply_message]
+                        to=user_id, messages=[message_to_push]
                     ))
                     print(f"Fallback Push 回覆成功 for user {user_id}")
                 except Exception as push_err:
@@ -501,7 +506,6 @@ def handle_postback(event):
                 except ValueError:
                     print(f"錯誤：解析生日時間失敗: {birth_datetime_str}")
                     reply_message = TextMessage(text="選擇的日期時間格式有誤，請重新操作。")
-                    # 如果解析失敗，立刻回覆錯誤並停止
                     if reply_message:
                          with ApiClient(configuration) as api_client:
                             line_bot_api = MessagingApi(api_client)
@@ -509,9 +513,8 @@ def handle_postback(event):
                                 line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[reply_message]))
                             except Exception as push_err:
                                 print(f"Push 回覆解析錯誤訊息失敗: {push_err}")
-                         return # 結束此 Postback 處理
+                         return
 
-                # 暫存生日資訊和時辰，並設定狀態為等待主題
                 user_states[user_id] = {
                     "state": "awaiting_topic_after_picker",
                     "data": {
@@ -520,18 +523,14 @@ def handle_postback(event):
                         "shichen": shichen
                     }
                 }
-                # 準備 Quick Reply 按鈕詢問主題 (加入返回選項)
-                quick_reply_items = [
-                    QuickReplyButton(action=MessageAction(label="感情", text="感情")),
-                    QuickReplyButton(action=MessageAction(label="事業", text="事業")),
-                    QuickReplyButton(action=MessageAction(label="健康", text="健康")),
-                    QuickReplyButton(action=MessageAction(label="財運", text="財運")),
-                    QuickReplyButton(action=MessageAction(label="其他", text="其他")),
-                    QuickReplyButton(action=MessageAction(label="返回", text="返回")), # 加入返回/取消
-                ]
+                # *** 修改處：移除 QuickReply，改為純文字提示 ***
+                # quick_reply_items = [ ... ] # Comment out
+                # reply_message = TextMessage(
+                #     text=f"感謝您提供生日時辰：\n{formatted_birth_info} ({shichen}時)\n\n請問您主要想詢問關於哪方面的問題？\n（點選下方按鈕或直接輸入）",
+                #     quick_reply=QuickReply(items=quick_reply_items)
+                # )
                 reply_message = TextMessage(
-                    text=f"感謝您提供生日時辰：\n{formatted_birth_info} ({shichen}時)\n\n請問您主要想詢問關於哪方面的問題？\n（點選下方按鈕或直接輸入）",
-                    quick_reply=QuickReply(items=quick_reply_items)
+                    text=f"感謝您提供生日時辰：\n{formatted_birth_info} ({shichen}時)\n\n請問您主要想詢問關於哪方面的問題？（請直接輸入文字，例如：感情，或輸入 取消）"
                 )
             else:
                  reply_message = TextMessage(text="無法獲取您選擇的生日時間，請重試。")
@@ -543,12 +542,10 @@ def handle_postback(event):
             if topic:
                  print(f"用戶 {user_id} 查詢資訊: {topic}")
                  info_text = get_info_text(topic)
-                 # 如果 get_info_text 返回有效內容才回覆
                  if info_text and not info_text.startswith("抱歉"):
                      reply_message = TextMessage(text=info_text)
                  else:
                      print(f"主題 '{topic}' 沒有對應的說明文字。")
-                     # 如果沒有特定說明，可以選擇不回覆
             else:
                  reply_message = TextMessage(text="抱歉，無法識別您想了解的資訊。")
 
@@ -560,17 +557,16 @@ def handle_postback(event):
         reply_message = TextMessage(text="系統無法處理您的請求，請稍後再試。")
     except Exception as e:
         print(f"處理 Postback 時發生未知錯誤: {e}")
-        app.logger.exception(f"Error processing postback: {e}") # Log full traceback
+        app.logger.exception(f"Error processing postback: {e}")
         reply_message = TextMessage(text="系統發生錯誤，請稍後再試。")
 
     # --- 發送 Postback 的回覆 ---
-    # PostbackEvent 沒有 reply_token，必須用 Push API 回覆
     if reply_message:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             try:
                 print(f"準備 Push 回覆給 {user_id}")
-                # 處理 QuickReply 的發送
+                # 處理 QuickReply 的發送 (現在已移除，但保留判斷以防萬一)
                 if isinstance(reply_message, TextMessage) and hasattr(reply_message, 'quick_reply') and reply_message.quick_reply:
                     line_bot_api.push_message(PushMessageRequest(
                         to=user_id, messages=[reply_message]
@@ -594,7 +590,6 @@ if __name__ == "__main__":
     app.logger.info('Flask logger configured.')
 
     port = int(os.getenv('PORT', 8080))
-    # 使用 Gunicorn 時，app.run() 不會被執行，但保留它以便本地測試
+    # 使用 Gunicorn 時，app.run() 不會被執行
     # 本地測試時取消下一行的註解:
     # app.run(host='0.0.0.0', port=port, debug=True)
-    # 注意：在 Render 上 debug=True 不建議
