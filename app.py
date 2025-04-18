@@ -58,6 +58,7 @@ if not google_credentials_json:
 if not teacher_user_id:
     print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
 
+
 # 初始化 LINE Bot API
 configuration = Configuration(access_token=channel_access_token)
 handler = WebhookHandler(channel_secret)
@@ -70,7 +71,7 @@ TW_TIMEZONE = pytz.timezone('Asia/Taipei')
 
 # --- 狀態管理 (簡易版，僅用於暫存生日時間) ---
 # !!! 警告：此簡易狀態管理在 Render 等環境下可能因服務重啟或多實例而遺失狀態 !!!
-user_states = {} # {user_id: {"state": "awaiting_topic_after_picker", "data": {"birth_info_str": "..."}}}
+user_states = {} # {user_id: {"state": "awaiting_topic_after_picker", "data": {"birth_info_str": "...", "shichen": "..."}}}
 
 # --- Google Calendar 輔助函數 (與之前相同) ---
 def get_google_calendar_service():
@@ -108,9 +109,9 @@ def get_calendar_events_for_date(target_date):
         print(f"查詢日曆事件時發生錯誤 ({target_date}): {e}")
         return None
 
-# --- 輔助函數：獲取服務說明文字 (與之前相同) ---
+# --- 輔助函數：獲取服務說明文字 (移除不必要的服務說明) ---
 def get_info_text(topic):
-    # ... (程式碼同上) ...
+    """根據主題返回說明文字 (現在只處理按鈕觸發的資訊)"""
     current_year = datetime.date.today().year
     if topic == '開運物':
         guangzhou_shopping_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n🔹 如有特定需求或想預購，歡迎私訊老師。\n🔹 商品預計於老師回台後 ({current_year}/4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
@@ -118,22 +119,27 @@ def get_info_text(topic):
     elif topic == '生基品':
          guangzhou_shengji_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n🔹 如有興趣或需求，歡迎私訊老師洽詢。\n🔹 相關用品預計於老師回台後 ({current_year}/4/22之後) 整理寄出。"
          return ("【生基用品】\n生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n老師提供相關諮詢與必需品代尋服務。\n\n" + guangzhou_shengji_reminder)
-    elif topic == '法事':
-        guangzhou_ritual_reminder = f'❗️ {current_year}/4/11 至 {current_year}/4/22 老師在廣州，期間無法進行任何法事項目，敬請見諒。'
-        return (
-            "【法事服務項目】\n旨在透過儀式調和能量，趨吉避凶。\n"
-            "主要項目：\n"
-            "🔹 冤親債主 (處理官司/考運/健康/小人)\n"
-            "🔹 補桃花 (助感情/貴人/客戶)\n"
-            "🔹 補財庫 (助財運/事業/防破財)\n"
-            "費用：單項 NT$680 / 三項合一 NT$1800\n\n"
-            "🔹 祖先相關 (詳情請私訊)\n"
-            "費用：NT$1800 / 份\n\n"
-            "⚠️ 特別提醒：\n" + guangzhou_ritual_reminder + "\n"
-            "❓ 如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。"
-        )
+    # 移除法事等其他說明，因為這些現在透過按鈕觸發預約流程
     else:
         return "抱歉，目前沒有關於「"+topic+"」的詳細說明。"
+
+# --- 新增：計算時辰輔助函數 ---
+def get_shichen(hour):
+    """根據小時 (0-23) 返回對應的時辰"""
+    if hour < 0 or hour > 23:
+        return "未知"
+    shichen_map = {
+        (23, 0): "子", (1, 2): "丑", (3, 4): "寅", (5, 6): "卯",
+        (7, 8): "辰", (9, 10): "巳", (11, 12): "午", (13, 14): "未",
+        (15, 16): "申", (17, 18): "酉", (19, 20): "戌", (21, 22): "亥"
+    }
+    # 處理子時跨日
+    if hour == 23 or hour == 0:
+        return "子"
+    for hours, name in shichen_map.items():
+        if hours[0] <= hour <= hours[1]:
+            return name
+    return "未知" # 理論上不會執行到這裡
 
 # --- LINE 事件處理函數 ---
 
@@ -160,26 +166,29 @@ def handle_follow(event):
     current_year = datetime.date.today().year
     guangzhou_reminder_text = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停。'
     buttons = []
-    bookable_services = ["問事/命理", "法事", "收驚", "卜卦"]
-    for service in bookable_services:
-        postback_data = json.dumps({"action": "select_service", "service": service})
-        if len(postback_data) <= 300:
+    # 修改：將服務名稱與 Postback data 分開定義，方便管理
+    services = {
+        "預約：問事/命理": {"action": "select_service", "service": "問事/命理"},
+        "預約：法事": {"action": "select_service", "service": "法事"},
+        "預約：收驚": {"action": "select_service", "service": "收驚"},
+        "預約：卜卦": {"action": "select_service", "service": "卜卦"},
+        "了解：開運物": {"action": "show_info", "topic": "開運物"},
+        "了解：生基品": {"action": "show_info", "topic": "生基品"}
+    }
+    # 按鈕樣式
+    button_style = {'primary': '#A67B5B', 'secondary': '#BDBDBD'} # 定義主次顏色
+
+    for label, data in services.items():
+        style_key = 'primary' if data['action'] == 'select_service' else 'secondary'
+        postback_data_str = json.dumps(data)
+        if len(postback_data_str) <= 300:
             buttons.append(FlexButton(
-                action=PostbackAction(label=f"預約：{service}", data=postback_data, display_text=f"我想預約：{service}"),
-                style='primary', color='#A67B5B', margin='sm', height='sm'
+                action=PostbackAction(label=label, data=postback_data_str, display_text=label),
+                style=style_key, color=button_style[style_key], margin='sm', height='sm'
             ))
         else:
-            print(f"警告：預約按鈕 Postback data 過長 ({len(postback_data)}): {postback_data}")
-    info_topics = ["開運物", "生基品"]
-    for topic in info_topics:
-        postback_data = json.dumps({"action": "show_info", "topic": topic})
-        if len(postback_data) <= 300:
-             buttons.append(FlexButton(
-                action=PostbackAction(label=f"了解：{topic}", data=postback_data, display_text=f"我想了解：{topic}"),
-                style='secondary', margin='sm', height='sm'
-            ))
-        else:
-             print(f"警告：資訊按鈕 Postback data 過長 ({len(postback_data)}): {postback_data}")
+             print(f"警告：按鈕 Postback data 過長 ({len(postback_data_str)}): {postback_data_str}")
+
     bubble = FlexBubble(
         header=FlexBox(layout='vertical', padding_all='lg', contents=[
              FlexText(text='宇宙玄天院 歡迎您！', weight='bold', size='xl', align='center', color='#B28E49'),
@@ -210,32 +219,37 @@ def handle_text_message(event):
     current_year = datetime.date.today().year
     now = datetime.datetime.now(TW_TIMEZONE)
 
-    # --- 檢查是否在命理問事流程中 (現在只處理等待主題的狀態) ---
+    # --- 檢查是否在命理問事流程中 (等待主題) ---
     if user_id in user_states:
         state_info = user_states[user_id]
         current_state = state_info["state"]
 
-        if text_lower == '取消':
+        # --- 新增：處理返回/取消 ---
+        if text_lower == '取消' or text_lower == '返回':
             if user_id in user_states: del user_states[user_id] # 清除狀態
-            reply_message = TextMessage(text="好的，已取消本次命理資訊輸入。")
+            # 可以選擇回覆或不回覆
+            reply_message = TextMessage(text="好的，已取消。請點擊歡迎訊息中的按鈕重新選擇服務。")
+            # 或者直接不回覆，讓用戶自己重選
 
         elif current_state == "awaiting_topic_after_picker":
             topic = text # 假設用戶會點擊 Quick Reply 或輸入文字
-            birth_info_str = state_info["data"].get("birth_info_str", "未提供") # 從狀態取出之前存的生日時間字串
+            birth_info_str = state_info["data"].get("birth_info_str", "未提供")
+            shichen = state_info["data"].get("shichen", "未知") # 取得之前算的時辰
 
-            # 格式化生日時間 (可能包含 T)
+            # 格式化生日時間
             try:
                 dt_obj = datetime.datetime.fromisoformat(birth_info_str)
                 formatted_birth_info = dt_obj.astimezone(TW_TIMEZONE).strftime('%Y-%m-%d %H:%M')
             except ValueError:
-                 formatted_birth_info = birth_info_str # 如果格式不對，直接顯示原始字串
+                 formatted_birth_info = birth_info_str
 
-            # --- 記錄資訊並通知老師 (或印出日誌) ---
+            # --- 記錄資訊並通知老師 (包含時辰) ---
             notification_base_text = (
                 f"【命理問事請求】\n"
                 f"--------------------\n"
                 f"用戶ID: {user_id}\n"
-                f"提供生日: {formatted_birth_info}\n" # 使用格式化後的時間
+                f"提供生日: {formatted_birth_info}\n"
+                f"對應時辰: {shichen}\n" # 加入時辰
                 f"問題主題: {topic}\n"
                 f"--------------------"
             )
@@ -258,45 +272,44 @@ def handle_text_message(event):
                 print("警告：未設定老師的 User ID，命理問事通知僅記錄在日誌中。")
                 print(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
 
-            reply_message = TextMessage(text=f"收到您的資訊！\n生日時辰：{formatted_birth_info}\n問題主題：{topic}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！")
+            reply_message = TextMessage(text=f"收到您的資訊！\n生日時辰：{formatted_birth_info} ({shichen}時)\n問題主題：{topic}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！")
             if user_id in user_states: del user_states[user_id] # 清除狀態
         else:
-             # 如果狀態不是等待主題，可能是之前的狀態未清除或異常，提示用戶取消
-             reply_message = TextMessage(text="您目前似乎在進行某個流程，若要重新開始，請先輸入「取消」。")
+             # 其他未預期的狀態
+             if user_id in user_states: del user_states[user_id] # 清除狀態以防萬一
+             reply_message = TextMessage(text="您目前似乎在進行某個流程，若要重新開始，請點擊歡迎訊息中的按鈕。")
 
-
-    # --- 如果不在對話流程中，處理一般關鍵字 ---
+    # --- 如果不在對話流程中，處理關鍵字 (只保留預約和命理/問事) ---
     else:
         # --- 觸發命理問事流程 ---
         if '命理' in text_lower or '問事' in text_lower:
             print(f"用戶 {user_id} 觸發命理問事流程")
-            # 準備 DateTime Picker
-            picker_data = json.dumps({"action": "collect_birth_info"})
-            if len(picker_data) > 300:
-                 print(f"警告：命理問事 Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
-                 reply_message = TextMessage(text="系統錯誤，無法啟動生日輸入，請稍後再試。")
+            if user_id not in user_states: # 避免重複觸發
+                # 準備 DateTime Picker
+                picker_data = json.dumps({"action": "collect_birth_info"})
+                if len(picker_data) > 300:
+                    print(f"警告：命理問事 Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
+                    reply_message = TextMessage(text="系統錯誤，無法啟動生日輸入，請稍後再試。")
+                else:
+                    min_date = "1920-01-01T00:00"
+                    max_date = now.strftime('%Y-%m-%dT%H:%M')
+                    bubble = FlexBubble(
+                        body=FlexBox(layout='vertical', spacing='md', contents=[
+                            FlexText(text='進行命理分析需要您的出生年月日時。', wrap=True, size='md'),
+                            FlexText(text='若不確定準確時辰，可先選擇大概時間（如中午12點），稍後與老師確認。', wrap=True, size='sm', color='#666666', margin='sm'),
+                            FlexButton(
+                                action=DatetimePickerAction(
+                                    label='📅 點此選擇生日時辰', data=picker_data, mode='datetime',
+                                    min=min_date, max=max_date
+                                ),
+                                style='primary', color='#A67B5B', margin='lg'
+                            )
+                        ])
+                    )
+                    reply_message = FlexMessage(alt_text='請選擇您的出生年月日時', contents=bubble)
             else:
-                # 設定選擇範圍，例如 1920 年至今
-                min_date = "1920-01-01T00:00"
-                max_date = now.strftime('%Y-%m-%dT%H:%M')
+                 reply_message = TextMessage(text="您正在輸入生日資訊，請繼續依照提示操作，或輸入「取消」重新開始。")
 
-                bubble = FlexBubble(
-                    body=FlexBox(layout='vertical', spacing='md', contents=[
-                        FlexText(text='進行命理分析需要您的出生年月日時。', wrap=True, size='md'),
-                        FlexText(text='若不確定準確時辰，可先選擇大概時間（如中午12點），稍後與老師確認。', wrap=True, size='sm', color='#666666', margin='sm'),
-                        FlexButton(
-                            action=DatetimePickerAction(
-                                label='📅 點此選擇生日時辰',
-                                data=picker_data,
-                                mode='datetime',
-                                min=min_date, # 限制最早日期
-                                max=max_date  # 限制最晚日期 (今天)
-                            ),
-                            style='primary', color='#A67B5B', margin='lg'
-                        )
-                    ])
-                )
-                reply_message = FlexMessage(alt_text='請選擇您的出生年月日時', contents=bubble)
 
         # --- 處理「預約」關鍵字 ---
         elif text_lower == '預約':
@@ -322,41 +335,27 @@ def handle_text_message(event):
             )
             reply_message = FlexMessage(alt_text='請選擇預約服務', contents=bubble)
 
-        # --- 處理其他資訊關鍵字 ---
-        elif '法事' in text_lower:
-            info_text = get_info_text('法事')
-            reply_message = TextMessage(text=info_text)
-        elif '開運物' in text_lower:
-            reply_message = TextMessage(text=get_info_text('開運物'))
-        elif '生基品' in text_lower:
-            reply_message = TextMessage(text=get_info_text('生基品'))
-        elif '收驚' in text_lower:
-            guangzhou_shoujing_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可提供遠距離線上收驚服務，效果一樣。\n\n"
-            reply_text = ("【收驚服務】\n適用於受到驚嚇、心神不寧、睡眠品質不佳等狀況。\n\n" + guangzhou_shoujing_reminder + "如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。")
-            reply_message = TextMessage(text=reply_text)
-        elif '卜卦' in text_lower:
-            guangzhou_bugua_reminder = f"🗓️ 老師行程：\n🔹 {current_year}/4/11 - {current_year}/4/22 期間老師在廣州，但仍可透過線上方式進行卜卦。\n\n"
-            reply_text = ("【卜卦問事】\n針對特定問題提供指引，例如決策、尋物、運勢吉凶等。\n\n" + guangzhou_bugua_reminder + "如需預約，請點選歡迎訊息中的按鈕或輸入「預約」。")
-            reply_message = TextMessage(text=reply_text)
+        # --- 移除其他關鍵字的回覆 ---
+        # elif '法事' in text_lower: ... (移除)
+        # elif '開運物' in text_lower: ... (移除)
+        # elif '生基品' in text_lower: ... (移除)
+        # elif '收驚' in text_lower: ... (移除)
+        # elif '卜卦' in text_lower: ... (移除)
 
-        # --- 預設回覆 ---
+        # --- 預設回覆 (如果不是已知關鍵字) ---
         else:
-            default_guangzhou_reminder = f'🗓️ 特別提醒：{current_year}/4/11 至 {current_year}/4/22 老師在廣州，部分服務（如法事）暫停。'
-            default_bubble = FlexBubble(
+            # 提示用戶使用按鈕
+             default_bubble = FlexBubble(
                 body=FlexBox(
                     layout='vertical', spacing='md',
                     contents=[
                         FlexText(text='宇宙玄天院 小幫手', weight='bold', size='lg', align='center', color='#B28E49'),
                         FlexText(text='您好！請問需要什麼服務？', wrap=True, size='md', margin='md'),
-                        FlexText(text='您可以點擊歡迎訊息中的按鈕，或輸入以下關鍵字：', wrap=True, size='sm', color='#555555', margin='lg'),
-                        FlexText(text='🔹 預約'), FlexText(text='🔹 問事 / 命理'), FlexText(text='🔹 法事'),
-                        FlexText(text='🔹 開運物'), FlexText(text='🔹 生基品'), FlexText(text='🔹 收驚'), FlexText(text='🔹 卜卦'),
-                        FlexSeparator(margin='lg'),
-                        FlexText(text=default_guangzhou_reminder, wrap=True, size='xs', color='#E53E3E', margin='md')
+                        FlexText(text='請點擊歡迎訊息中的按鈕，或輸入「預約」、「命理」、「問事」來開始互動。', wrap=True, size='sm', color='#555555', margin='lg'),
                     ]
                 )
             )
-            reply_message = FlexMessage(alt_text='歡迎使用服務', contents=default_bubble)
+             reply_message = FlexMessage(alt_text='歡迎使用服務', contents=default_bubble)
 
     # --- 發送回覆 ---
     if reply_message:
@@ -384,7 +383,7 @@ def handle_text_message(event):
 
 @handler.add(PostbackEvent)
 def handle_postback(event):
-    """處理 Postback 事件 (預約流程 + 生日收集)"""
+    """處理 Postback 事件 (預約流程 + 生日收集 + 資訊顯示)"""
     reply_message = None
     user_id = event.source.user_id
     postback_data_str = event.postback.data
@@ -396,10 +395,11 @@ def handle_postback(event):
 
         # --- 處理：選擇服務 (預約流程) ---
         if action == 'select_service':
+            # (與上次相同)
             selected_service = postback_data.get('service')
             if selected_service:
                 print(f"用戶 {user_id} 選擇了預約服務: {selected_service}")
-                picker_data = json.dumps({"action": "select_datetime", "service": selected_service}) # 預約用的日期選擇
+                picker_data = json.dumps({"action": "select_datetime", "service": selected_service})
                 if len(picker_data) > 300:
                      print(f"警告：預約 Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
                      reply_message = TextMessage(text="系統錯誤：選項資料過長，請稍後再試。")
@@ -421,12 +421,13 @@ def handle_postback(event):
             else:
                 reply_message = TextMessage(text="發生錯誤，無法識別您選擇的服務。")
 
+
         # --- 處理：選擇預約日期時間後 ---
         elif action == 'select_datetime':
+            # (與上次相同)
             selected_service = postback_data.get('service')
             selected_datetime_str = event.postback.params.get('datetime')
             if selected_service and selected_datetime_str:
-                # (預約的後續處理、檢查、通知 - 與上次相同)
                 print(f"用戶 {user_id} 預約服務 '{selected_service}' 時間 '{selected_datetime_str}'")
                 try:
                     selected_dt = datetime.datetime.fromisoformat(selected_datetime_str)
@@ -478,22 +479,44 @@ def handle_postback(event):
             birth_datetime_str = event.postback.params.get('datetime')
             if birth_datetime_str:
                 print(f"用戶 {user_id} 提供了生日時間: {birth_datetime_str}")
-                # 暫存生日資訊，並設定狀態為等待主題
+                # 解析時間並計算時辰
+                try:
+                    selected_dt = datetime.datetime.fromisoformat(birth_datetime_str)
+                    selected_hour = selected_dt.hour
+                    shichen = get_shichen(selected_hour) # 計算時辰
+                    formatted_birth_info = selected_dt.astimezone(TW_TIMEZONE).strftime('%Y-%m-%d %H:%M')
+                    print(f"對應時辰: {shichen}")
+                except ValueError:
+                    print(f"錯誤：解析生日時間失敗: {birth_datetime_str}")
+                    reply_message = TextMessage(text="選擇的日期時間格式有誤，請重新操作。")
+                    # 如果解析失敗，就不繼續往下問主題
+                    if reply_message: # Send reply immediately if error occurred
+                         with ApiClient(configuration) as api_client:
+                            line_bot_api = MessagingApi(api_client)
+                            line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[reply_message]))
+                         return # Stop processing this postback
+
+                # 暫存生日資訊和時辰，並設定狀態為等待主題
                 user_states[user_id] = {
                     "state": "awaiting_topic_after_picker",
-                    "data": {"birth_info_str": birth_datetime_str}
+                    "data": {
+                        "birth_info_str": birth_datetime_str, # 原始字串
+                        "formatted_birth_info": formatted_birth_info, # 格式化字串
+                        "shichen": shichen # 計算出的時辰
+                    }
                 }
-                # 準備 Quick Reply 按鈕詢問主題
+                # 準備 Quick Reply 按鈕詢問主題 (加入返回選項)
                 quick_reply_items = [
                     QuickReplyButton(action=MessageAction(label="感情", text="感情")),
                     QuickReplyButton(action=MessageAction(label="事業", text="事業")),
                     QuickReplyButton(action=MessageAction(label="健康", text="健康")),
                     QuickReplyButton(action=MessageAction(label="財運", text="財運")),
                     QuickReplyButton(action=MessageAction(label="其他", text="其他")),
-                    QuickReplyButton(action=MessageAction(label="取消", text="取消")),
+                    QuickReplyButton(action=MessageAction(label="返回", text="返回")), # 加入返回
                 ]
+                # 在訊息中告知用戶對應時辰
                 reply_message = TextMessage(
-                    text=f"感謝您提供生日時辰。\n請問您主要想詢問關於哪方面的問題？",
+                    text=f"感謝您提供生日時辰：\n{formatted_birth_info} ({shichen}時)\n\n請問您主要想詢問關於哪方面的問題？\n（點選下方按鈕或直接輸入）",
                     quick_reply=QuickReply(items=quick_reply_items)
                 )
             else:
@@ -527,10 +550,15 @@ def handle_postback(event):
             line_bot_api = MessagingApi(api_client)
             try:
                 print(f"準備 Push 回覆給 {user_id}")
-                line_bot_api.push_message(PushMessageRequest(
-                    to=user_id,
-                    messages=[reply_message]
-                ))
+                # 處理 QuickReply 的發送
+                if isinstance(reply_message, TextMessage) and hasattr(reply_message, 'quick_reply') and reply_message.quick_reply:
+                    line_bot_api.push_message(PushMessageRequest(
+                        to=user_id, messages=[reply_message]
+                    ))
+                else:
+                    line_bot_api.push_message(PushMessageRequest(
+                        to=user_id, messages=[reply_message]
+                    ))
             except Exception as e:
                 print(f"回覆 Postback 訊息失敗: {e}")
 
