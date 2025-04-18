@@ -7,7 +7,7 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
-# *** 修改處：改回直接從 messaging 匯入 QuickReply 和 QuickReplyButton ***
+# *** 修改處：註解掉 QuickReply 和 QuickReplyButton 的匯入 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -24,11 +24,11 @@ from linebot.v3.messaging import (
     MessageAction,
     URIAction,
     PostbackAction,
-    DatetimePickerAction,
-    QuickReply,       # <-- Add back
-    QuickReplyButton  # <-- Add back
+    DatetimePickerAction #,
+    # QuickReply,       # <-- Commented out
+    # QuickReplyButton  # <-- Commented out
 )
-# *** 移除之前嘗試的特定路徑匯入 ***
+# *** 移除之前嘗試的特定路徑匯入 (如果存在) ***
 # from linebot.v3.messaging.models.quick_reply import QuickReply, QuickReplyButton
 
 from linebot.v3.webhooks import (
@@ -252,12 +252,20 @@ def handle_text_message(event):
                 state_info["state"] = "awaiting_topic"
                 birth_str = f"{user_data['year']}-{user_data['month']:02d}-{user_data['day']:02d} {user_data['hour']:02d}時"
                 user_data["birth_info"] = birth_str
-                quick_reply_items = [
-                    QuickReplyButton(action=MessageAction(label="感情", text="感情")), QuickReplyButton(action=MessageAction(label="事業", text="事業")),
-                    QuickReplyButton(action=MessageAction(label="健康", text="健康")), QuickReplyButton(action=MessageAction(label="財運", text="財運")),
-                    QuickReplyButton(action=MessageAction(label="其他", text="其他")), QuickReplyButton(action=MessageAction(label="取消", text="取消")),
-                ]
-                reply_message = TextMessage(text=f"感謝提供生日時辰。\n請問您主要想詢問關於哪方面的問題？", quick_reply=QuickReply(items=quick_reply_items))
+
+                # *** 註解掉 QuickReply 相關程式碼 ***
+                # quick_reply_items = [
+                #     QuickReplyButton(action=MessageAction(label="感情", text="感情")), QuickReplyButton(action=MessageAction(label="事業", text="事業")),
+                #     QuickReplyButton(action=MessageAction(label="健康", text="健康")), QuickReplyButton(action=MessageAction(label="財運", text="財運")),
+                #     QuickReplyButton(action=MessageAction(label="其他", text="其他")), QuickReplyButton(action=MessageAction(label="取消", text="取消")),
+                # ]
+                # reply_message = TextMessage(
+                #     text=f"感謝提供生日時辰。\n請問您主要想詢問關於哪方面的問題？",
+                #     quick_reply=QuickReply(items=quick_reply_items)
+                # )
+                # *** 改為簡單的文字回覆 ***
+                reply_message = TextMessage(text=f"感謝提供生日時辰。\n請問您主要想詢問關於哪方面的問題？（請直接輸入文字，例如：感情）")
+
              else:
                 reply_message = TextMessage(text="小時格式錯誤，請輸入0-23的數字 或輸入「取消」。")
         elif current_state == "awaiting_topic":
@@ -370,7 +378,7 @@ def handle_text_message(event):
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             try:
-                # 處理 QuickReply 的發送
+                # 處理 QuickReply 的發送 (現在已註解掉，但保留判斷邏輯以防未來恢復)
                 if isinstance(reply_message, TextMessage) and hasattr(reply_message, 'quick_reply') and reply_message.quick_reply:
                      line_bot_api.reply_message(
                         ReplyMessageRequest(
