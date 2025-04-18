@@ -3,6 +3,7 @@ import os
 import json
 import datetime
 import re # Import regular expressions for validation
+import logging # Import logging
 from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
@@ -37,31 +38,45 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import pytz
 
+# --- 加入版本標記 ---
+BOT_VERSION = "v1.1.0"
+print(f"運行版本：{BOT_VERSION}")
+
 app = Flask(__name__)
 
 # --- 基本設定 ---
-# (與上次相同)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '')
 google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '')
 teacher_user_id = os.getenv('TEACHER_USER_ID', '')
 
-# --- 環境變數檢查 ---
-# (與上次相同)
+# --- 環境變數檢查與日誌 ---
+print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN: {'已設置' if channel_access_token else '未設置'}")
+print(f"DEBUG: LINE_CHANNEL_SECRET: {'已設置' if channel_secret else '未設置'}")
+print(f"DEBUG: GOOGLE_CALENDAR_ID: {'已設置' if calendar_id else '未設置'}")
+print(f"DEBUG: GOOGLE_CREDENTIALS_JSON: {'已設置' if google_credentials_json else '未設置'}")
+print(f"DEBUG: TEACHER_USER_ID: {teacher_user_id if teacher_user_id else '未設置'}")
+
 if not channel_access_token or not channel_secret:
     print("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
+    # 在實際應用中，這裡可能需要引發錯誤或退出
 if not calendar_id:
     print("警告：未設定 GOOGLE_CALENDAR_ID 環境變數，無法查詢日曆")
 if not google_credentials_json:
     print("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數，無法連接 Google Calendar")
-if not teacher_user_id:
-    print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
+# if not teacher_user_id: # 根據需要取消註解此檢查
+#     print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
 
 
 # 初始化 LINE Bot API
-configuration = Configuration(access_token=channel_access_token)
-handler = WebhookHandler(channel_secret)
+try:
+    configuration = Configuration(access_token=channel_access_token)
+    handler = WebhookHandler(channel_secret)
+    print("DEBUG: LINE Bot SDK configuration and handler initialized.")
+except Exception as init_err:
+    print(f"CRITICAL ERROR: Failed to initialize LINE Bot SDK: {init_err}")
+    # 這裡可能需要更強的錯誤處理，例如退出應用程式
 
 # Google Calendar API 設定
 SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
@@ -69,9 +84,9 @@ SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 # 時區設定
 TW_TIMEZONE = pytz.timezone('Asia/Taipei')
 
-# --- 狀態管理 (簡易版，僅用於暫存生日時間) ---
+# --- 狀態管理 (簡易版，非生產適用) ---
 # !!! 警告：此簡易狀態管理在 Render 等環境下可能因服務重啟或多實例而遺失狀態 !!!
-user_states = {} # {user_id: {"state": "awaiting_topic_after_picker", "data": {"birth_info_str": "...", "shichen": "..."}}}
+user_states = {} # {user_id: {"state": "...", "data": {...}}}
 
 # --- Google Calendar 輔助函數 (與之前相同) ---
 def get_google_calendar_service():
@@ -84,6 +99,7 @@ def get_google_calendar_service():
         credentials = service_account.Credentials.from_service_account_info(
             credentials_info, scopes=SCOPES)
         service = build('calendar', 'v3', credentials=credentials)
+        print("DEBUG: Google Calendar service initialized successfully.")
         return service
     except json.JSONDecodeError:
         print("錯誤：Google 憑證 JSON 格式錯誤")
@@ -100,11 +116,14 @@ def get_calendar_events_for_date(target_date):
     try:
         start_time = datetime.datetime.combine(target_date, datetime.time.min, tzinfo=TW_TIMEZONE)
         end_time = datetime.datetime.combine(target_date, datetime.time.max, tzinfo=TW_TIMEZONE)
+        print(f"DEBUG: Querying Calendar ID '{calendar_id}' for date {target_date} ({start_time.isoformat()} to {end_time.isoformat()})")
         events_result = service.events().list(
             calendarId=calendar_id, timeMin=start_time.isoformat(), timeMax=end_time.isoformat(),
             singleEvents=True, orderBy='startTime'
         ).execute()
-        return events_result.get('items', [])
+        events = events_result.get('items', [])
+        print(f"DEBUG: Found {len(events)} events for {target_date}")
+        return events
     except Exception as e:
         print(f"查詢日曆事件時發生錯誤 ({target_date}): {e}")
         return None
@@ -137,11 +156,9 @@ def get_shichen(hour):
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # ... (程式碼同上) ...
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
-    # 使用 Flask 的 logger 記錄請求 body，方便調試
-    app.logger.info(f"Request body: {body}")
+    app.logger.info(f"Request body: {body}") # 使用 Flask logger
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -150,7 +167,7 @@ def callback():
         abort(400)
     except Exception as e:
         print(f"處理訊息時發生錯誤: {e}")
-        app.logger.exception(f"Error handling request: {e}") # 記錄詳細錯誤堆疊
+        app.logger.exception(f"Error handling request: {e}")
         abort(500)
     return 'OK'
 
@@ -210,15 +227,18 @@ def handle_text_message(event):
     text_lower = text.lower()
     reply_message = None
     now = datetime.datetime.now(TW_TIMEZONE)
-    reply_token = event.reply_token # 獲取 reply token
+    reply_token = event.reply_token
 
     # --- 檢查是否在命理問事流程中 (等待主題) ---
     if user_id in user_states:
         state_info = user_states[user_id]
         current_state = state_info["state"]
+        print(f"DEBUG: User {user_id} is in state '{current_state}'") # Log current state
 
         if text_lower == '取消' or text_lower == '返回':
-            if user_id in user_states: del user_states[user_id]
+            if user_id in user_states:
+                print(f"DEBUG: Clearing state for user {user_id} due to cancel/back.") # Log state clear
+                del user_states[user_id]
             reply_message = TextMessage(text="好的，已取消。請點擊歡迎訊息中的按鈕重新選擇服務。")
 
         elif current_state == "awaiting_topic_after_picker":
@@ -226,6 +246,7 @@ def handle_text_message(event):
             birth_info_str = state_info["data"].get("birth_info_str", "未提供")
             shichen = state_info["data"].get("shichen", "未知")
             formatted_birth_info = state_info["data"].get("formatted_birth_info", birth_info_str)
+            print(f"DEBUG: User {user_id} provided topic: '{topic}'") # Log topic received
 
             notification_base_text = (
                 f"【命理問事請求】\n"
@@ -257,8 +278,12 @@ def handle_text_message(event):
                 print(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
 
             reply_message = TextMessage(text=f"收到您的資訊！\n生日時辰：{formatted_birth_info} ({shichen}時)\n問題主題：{topic}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！")
-            if user_id in user_states: del user_states[user_id]
+            if user_id in user_states:
+                print(f"DEBUG: Clearing state for user {user_id} after completion.") # Log state clear
+                del user_states[user_id]
         else:
+             # Handle unexpected state
+             print(f"WARN: User {user_id} in unexpected state '{current_state}', clearing state.")
              if user_id in user_states: del user_states[user_id]
              reply_message = TextMessage(text="您目前似乎在進行某個流程，若要重新開始，請點擊歡迎訊息中的按鈕。")
 
@@ -345,17 +370,26 @@ def handle_text_message(event):
             line_bot_api = MessagingApi(api_client)
             try:
                 # 使用 Reply API 回覆
-                print(f"準備 Reply 回覆給 {user_id} (Token: {reply_token[:10]}...)") # Log reply attempt
+                print(f"準備 Reply 回覆給 {user_id} (Token: {reply_token[:10]}...)")
                 line_bot_api.reply_message(
                     ReplyMessageRequest(
-                        reply_token=reply_token, # 使用獲取的 reply_token
+                        reply_token=reply_token,
                         messages=[reply_message]
                     )
                 )
                 print(f"Reply 回覆成功 for user {user_id}")
             except Exception as e:
                 print(f"回覆訊息失敗 for user {user_id}: {e}")
-                app.logger.error(f"Failed to reply message to {user_id}: {e}")
+                # 嘗試用 Push API 作為備用 (如果 Reply Token 過期)
+                try:
+                    print(f"WARN: Reply failed for {user_id}, attempting Push as fallback.")
+                    line_bot_api.push_message(PushMessageRequest(
+                        to=user_id, messages=[reply_message]
+                    ))
+                    print(f"Fallback Push 回覆成功 for user {user_id}")
+                except Exception as push_err:
+                     print(f"Fallback Push 回覆也失敗 for user {user_id}: {push_err}")
+                     app.logger.error(f"Failed to reply/push message to {user_id}: {e}; Push fallback failed: {push_err}")
 
 
 @handler.add(PostbackEvent)
@@ -514,6 +548,7 @@ def handle_postback(event):
                      reply_message = TextMessage(text=info_text)
                  else:
                      print(f"主題 '{topic}' 沒有對應的說明文字。")
+                     # 如果沒有特定說明，可以選擇不回覆
             else:
                  reply_message = TextMessage(text="抱歉，無法識別您想了解的資訊。")
 
@@ -552,7 +587,7 @@ def handle_postback(event):
 
 # --- 主程式入口 ---
 if __name__ == "__main__":
-    # 設定 Flask logger
+    # 設定 Flask logger 與 Gunicorn 同步
     gunicorn_logger = logging.getLogger('gunicorn.error')
     app.logger.handlers = gunicorn_logger.handlers
     app.logger.setLevel(gunicorn_logger.level)
