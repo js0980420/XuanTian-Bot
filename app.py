@@ -7,12 +7,13 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
+# *** 修改處：移除 QuickReply 和 QuickReplyButton 從這裡匯入 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
     MessagingApi,
     ReplyMessageRequest,
-    PushMessageRequest, # Used for FollowEvent and Teacher Notification
+    PushMessageRequest,
     TextMessage,
     FlexMessage,
     FlexBubble,
@@ -23,10 +24,14 @@ from linebot.v3.messaging import (
     MessageAction,
     URIAction,
     PostbackAction,
-    DatetimePickerAction,
-    QuickReply,       # Added for topic selection
-    QuickReplyButton  # Added for topic selection
+    DatetimePickerAction
+    # QuickReply,       <-- Removed
+    # QuickReplyButton  <-- Removed
 )
+# *** 新增：使用更明確的路徑匯入 QuickReply 和 QuickReplyButton ***
+from linebot.v3.messaging.models.quick_reply import QuickReply
+from linebot.v3.messaging.models.quick_reply_button import QuickReplyButton
+
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
@@ -40,23 +45,22 @@ import pytz
 app = Flask(__name__)
 
 # --- 基本設定 ---
+# (與上次相同)
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
 calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '')
 google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '')
-# *** 老師的 LINE User ID，用於接收預約/問事通知 ***
 teacher_user_id = os.getenv('TEACHER_USER_ID', '')
 
 # --- 環境變數檢查 ---
+# (與上次相同)
 if not channel_access_token or not channel_secret:
     print("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
 if not calendar_id:
     print("警告：未設定 GOOGLE_CALENDAR_ID 環境變數，無法查詢日曆")
 if not google_credentials_json:
     print("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數，無法連接 Google Calendar")
-# *** 恢復 TEACHER_USER_ID 的檢查 ***
 if not teacher_user_id:
-    # 修改警告訊息，說明會 fallback 到日誌
     print("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
 
 
@@ -295,12 +299,10 @@ def handle_text_message(event):
     else:
         if '命理' in text_lower or '問事' in text_lower:
             print(f"用戶 {user_id} 觸發命理問事流程")
-            # 檢查是否已有狀態，避免重複觸發
             if user_id not in user_states:
                 user_states[user_id] = {"state": "awaiting_birth_year", "data": {}}
                 reply_message = TextMessage(text="您好，為了進行命理分析，需要請您提供出生年月日時。\n請先輸入您的出生西元年份 (例如：1990)。\n（若想取消，請隨時輸入「取消」）")
             else:
-                # 可能用戶正在輸入中又觸發關鍵字，提示一下
                 reply_message = TextMessage(text="您正在輸入生日資訊，請繼續依照提示操作，或輸入「取消」重新開始。")
 
         elif text_lower == '預約':
@@ -408,6 +410,7 @@ def handle_postback(event):
                      print(f"警告：Datetime Picker data 過長 ({len(picker_data)}): {picker_data}")
                      reply_message = TextMessage(text="系統錯誤：選項資料過長，請稍後再試。")
                 else:
+                    # *** 使用修正後的 min 格式 ***
                     min_datetime_str = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%dT00:00')
                     bubble = FlexBubble(
                         body=FlexBox(layout='vertical', contents=[
@@ -418,7 +421,7 @@ def handle_postback(event):
                                     label='📅 選擇日期時間',
                                     data=picker_data,
                                     mode='datetime',
-                                    min=min_datetime_str
+                                    min=min_datetime_str # 使用 YYYY-MM-DDTHH:mm 格式
                                 ),
                                 style='primary', color='#A67B5B', margin='lg'
                             )
@@ -456,7 +459,7 @@ def handle_postback(event):
                     if proceed_booking:
                         # *** 恢復發送通知給老師的邏輯 ***
                         notification_base_text = (
-                            f"【預約請求】\n" # 修改標題
+                            f"【預約請求】\n"
                             f"--------------------\n"
                             f"用戶ID: {user_id}\n"
                             f"服務項目: {selected_service}\n"
