@@ -336,4 +336,9 @@ def handle_postback(event):
                     if selected_service == '法事':
                         app.logger.info(f"Checking ritual availability for {user_id} on {selected_date}")
                         events = get_calendar_events_for_date(selected_date)
-                        if events is None: app.logger.error(f"Failed to query calendar for {selected_date}, blocking ritual booking for {user_id}"
+                        # 正確的版本 (v1.7.1) 應該是這樣：
+if events is None:
+    app.logger.error(f"Failed to query calendar for {selected_date}, blocking ritual booking for {user_id}") # <--- 有結尾括號
+    reply_message = TextMessage(text=f"抱歉，目前無法確認老師 {selected_date.strftime('%Y-%m-%d')} 的行程，請稍後再試或直接私訊老師。")
+    proceed_booking = False
+
