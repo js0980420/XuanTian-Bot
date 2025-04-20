@@ -8,7 +8,6 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
-# *** 移除 QuickReply 和 QuickReplyButton 的所有匯入嘗試 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
@@ -22,10 +21,12 @@ from linebot.v3.messaging import (
     FlexText,
     FlexButton,
     FlexSeparator,
-    MessageAction, # Keep for potential future use? Or remove if only Postback used now. Keep for now.
+    MessageAction,
     URIAction,
     PostbackAction,
-    DatetimePickerAction
+    DatetimePickerAction,
+    QuickReply,
+    QuickReplyButton
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -38,7 +39,7 @@ from googleapiclient.discovery import build
 import pytz
 
 # --- 加入版本標記 ---
-BOT_VERSION = "v1.7.1" # Revert QuickReply removal, fix imports
+BOT_VERSION = "v1.7.2" # Increment version for try-except fix
 print(f"運行版本：{BOT_VERSION}")
 
 app = Flask(__name__)
@@ -122,21 +123,19 @@ def get_info_text(topic):
 def get_shichen(hour):
     if not isinstance(hour, int) or hour < 0 or hour > 23: app.logger.warning(f"Invalid hour input for get_shichen: {hour}"); return "未知"
     app.logger.info(f"Calculating Shichen for input hour: {hour}")
-    if hour >= 23 or hour < 1: shichen_name = "子"
-    elif 1 <= hour < 3: shichen_name = "丑"
-    elif 3 <= hour < 5: shichen_name = "寅"
-    elif 5 <= hour < 7: shichen_name = "卯"
-    elif 7 <= hour < 9: shichen_name = "辰"
-    elif 9 <= hour < 11: shichen_name = "巳"
-    elif 11 <= hour < 13: shichen_name = "午"
-    elif 13 <= hour < 15: shichen_name = "未"
-    elif 15 <= hour < 17: shichen_name = "申"
-    elif 17 <= hour < 19: shichen_name = "酉"
-    elif 19 <= hour < 21: shichen_name = "戌"
-    elif 21 <= hour < 23: shichen_name = "亥"
-    else: shichen_name = "未知"; app.logger.error(f"Logic error in get_shichen for hour: {hour}")
-    app.logger.info(f"Hour {hour} maps to Shichen: {shichen_name}")
-    return shichen_name
+    if hour >= 23 or hour < 1: return "子"
+    if 1 <= hour < 3: return "丑"
+    if 3 <= hour < 5: return "寅"
+    if 5 <= hour < 7: return "卯"
+    if 7 <= hour < 9: return "辰"
+    if 9 <= hour < 11: return "巳"
+    if 11 <= hour < 13: return "午"
+    if 13 <= hour < 15: return "未"
+    if 15 <= hour < 17: return "申"
+    if 17 <= hour < 19: return "酉"
+    if 19 <= hour < 21: return "戌"
+    if 21 <= hour < 23: return "亥"
+    app.logger.error(f"Logic error in get_shichen for hour: {hour}"); return "未知"
 
 # --- 輔助函數：建立主選單 Flex Message ---
 def create_main_menu_message():
@@ -157,8 +156,7 @@ def send_message(recipient_id, message, reply_token=None):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         message_list = [message] if not isinstance(message, list) else message
-        # 移除 QuickReply 清理邏輯
-        cleaned_messages = message_list
+        cleaned_messages = message_list # Assume no QuickReply needed here for now
         if reply_token:
             try:
                 app.logger.info(f"Attempting Reply to {recipient_id[:10]}... (Token: {reply_token[:10]}...)")
@@ -197,7 +195,6 @@ def handle_follow(event):
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
-    """處理使用者傳送的文字訊息"""
     user_id = event.source.user_id
     text = event.message.text.strip()
     reply_token = event.reply_token
@@ -207,33 +204,29 @@ def handle_text_message(event):
     # --- 檢查是否在命理問事流程中 ---
     # 狀態：等待輸入主題
     if current_state == "awaiting_topic_input":
-        state_info = user_states[user_id]
-        user_data = state_info["data"]
+        state_info = user_states[user_id]; user_data = state_info["data"]
         if text.lower() in ['返回', '取消']:
              app.logger.info(f"Clearing state for user {user_id} due to '{text}' input.")
              if user_id in user_states: del user_states[user_id]
              main_menu_message = create_main_menu_message()
              send_message(user_id, main_menu_message, reply_token)
         else:
-            topic = text # 將用戶輸入的文字視為主題
-            user_data["topic"] = topic
-            state_info["state"] = "awaiting_question_detail" # 進入下一狀態
+            topic = text; user_data["topic"] = topic
+            state_info["state"] = "awaiting_question_detail"
             app.logger.info(f"User {user_id} provided topic: {topic}. Now awaiting question detail.")
             reply_message = TextMessage(text=f"好的，您選擇了「{topic}」。\n請簡述您想問的具體問題或情況：\n（若想返回主選單請直接輸入「返回」或「取消」）")
             send_message(user_id, reply_message, reply_token)
 
     # 狀態：等待輸入問題詳情
     elif current_state == "awaiting_question_detail":
-        state_info = user_states[user_id]
-        user_data = state_info["data"]
+        state_info = user_states[user_id]; user_data = state_info["data"]
         if text.lower() in ['返回', '取消']:
              app.logger.info(f"Clearing state for user {user_id} due to '{text}' input.")
              if user_id in user_states: del user_states[user_id]
              main_menu_message = create_main_menu_message()
              send_message(user_id, main_menu_message, reply_token)
-        else: # 將輸入視為問題詳情
-            question = text
-            user_data["question"] = question
+        else:
+            question = text; user_data["question"] = question
             app.logger.info(f"User {user_id} provided question detail: '{question}'")
             birth_info_str = user_data.get("birth_info_str", "未提供"); shichen = user_data.get("shichen", "未知")
             formatted_birth_info = user_data.get("formatted_birth_info", birth_info_str); topic = user_data.get("topic", "未指定")
@@ -303,7 +296,7 @@ def handle_postback(event):
                         contents.extend([FlexText(text=f'您選擇了預約：{selected_service}', weight='bold', align='center', margin='md'), FlexText(text='請選擇您希望預約的日期與時間', align='center', margin='md', size='sm'), FlexButton(action=DatetimePickerAction(label='📅 選擇日期時間', data=picker_data, mode='datetime', min=min_datetime_str), style='primary', color='#A67B5B', margin='lg')])
                         alt_text='請選擇預約日期時間'
                 if not reply_message and contents:
-                    if back_button: contents.append(back_button) # 加入返回按鈕
+                    if back_button: contents.append(back_button)
                     bubble = FlexBubble(body=FlexBox(layout='vertical', spacing='md', contents=contents))
                     reply_message = FlexMessage(alt_text=alt_text, contents=bubble)
             else: app.logger.warning(f"Postback 'select_service' missing service for user {user_id}"); reply_message = TextMessage(text="發生錯誤..."); follow_up_message = create_main_menu_message()
@@ -315,10 +308,8 @@ def handle_postback(event):
                 app.logger.info(f"User {user_id} submitted birth datetime: {selected_datetime_str}")
                 try:
                     selected_dt = datetime.datetime.fromisoformat(selected_datetime_str); hour = selected_dt.hour; shichen = get_shichen(hour); formatted_dt = selected_dt.astimezone(TW_TIMEZONE).strftime('%Y-%m-%d %H:%M')
-                    # *** 修改處：設定新狀態 awaiting_topic_input ***
                     user_states[user_id] = {"state": "awaiting_topic_input", "data": {"birth_info_str": selected_datetime_str, "formatted_birth_info": formatted_dt, "shichen": shichen}}
                     app.logger.info(f"State set for user {user_id}: awaiting_topic_input")
-                    # *** 修改處：提示用戶輸入主題文字 ***
                     reply_message = TextMessage(text=f"收到您的生日時辰：{formatted_dt} ({shichen}時)\n請問您主要想諮詢哪個方面的問題？ (例如：事業、感情、健康、財運、其他)\n（若想返回主選單請直接輸入「返回」或「取消」）")
                 except ValueError: app.logger.error(f"Failed to parse birth datetime for user {user_id}: {selected_datetime_str}"); reply_message = TextMessage(text="日期時間格式有誤..."); follow_up_message = create_main_menu_message()
                 except Exception as e: app.logger.exception(f"Error processing birth info for user {user_id}: {e}"); reply_message = TextMessage(text="處理生日資訊錯誤..."); follow_up_message = create_main_menu_message()
@@ -326,19 +317,87 @@ def handle_postback(event):
 
         # --- 處理：選擇預約日期時間後 (預約流程) ---
         elif action == 'select_datetime':
-            # (與上次相同)
             selected_service = postback_data.get('service'); selected_datetime_str = event.postback.params.get('datetime')
             if selected_service and selected_datetime_str:
                 app.logger.info(f"User {user_id} booking service '{selected_service}' at '{selected_datetime_str}'")
+                # *** 修正後的 try-except 結構 ***
                 try:
-                    selected_dt = datetime.datetime.fromisoformat(selected_datetime_str); selected_date = selected_dt.date(); formatted_dt = selected_dt.astimezone(TW_TIMEZONE).strftime('%Y-%m-%d %H:%M')
+                    selected_dt = datetime.datetime.fromisoformat(selected_datetime_str)
+                    selected_date = selected_dt.date()
+                    formatted_dt = selected_dt.astimezone(TW_TIMEZONE).strftime('%Y-%m-%d %H:%M')
                     proceed_booking = True
+                    conflict_or_error_message = None # 暫存衝突或錯誤訊息
+
                     if selected_service == '法事':
                         app.logger.info(f"Checking ritual availability for {user_id} on {selected_date}")
                         events = get_calendar_events_for_date(selected_date)
-                        # 正確的版本 (v1.7.1) 應該是這樣：
-if events is None:
-    app.logger.error(f"Failed to query calendar for {selected_date}, blocking ritual booking for {user_id}") # <--- 有結尾括號
-    reply_message = TextMessage(text=f"抱歉，目前無法確認老師 {selected_date.strftime('%Y-%m-%d')} 的行程，請稍後再試或直接私訊老師。")
-    proceed_booking = False
+                        if events is None:
+                            app.logger.error(f"Failed to query calendar for {selected_date}, blocking ritual booking for {user_id}")
+                            conflict_or_error_message = TextMessage(text=f"抱歉，目前無法確認老師 {selected_date.strftime('%Y-%m-%d')} 的行程，請稍後再試或直接私訊老師。")
+                            proceed_booking = False
+                        elif len(events) > 0:
+                            app.logger.info(f"Ritual booking conflict for {user_id} on {selected_date} ({len(events)} events)")
+                            conflict_or_error_message = TextMessage(text=f"抱歉，老師在 {selected_date.strftime('%Y-%m-%d')} 已有行程安排，暫無法進行法事，請選擇其他日期，謝謝。")
+                            proceed_booking = False
+
+                    if proceed_booking:
+                        notification_base_text = (f"【預約請求】\n--------------------\n用戶ID: {user_id}\n服務項目: {selected_service}\n預約時間: {formatted_dt}\n--------------------")
+                        app.logger.info(f"Processing booking request: {notification_base_text}")
+                        if teacher_user_id:
+                            try: send_message(teacher_user_id, TextMessage(text=notification_base_text + "\n請老師盡快確認並回覆客戶")); app.logger.info("預約通知已嘗試發送給老師。")
+                            except Exception as e: app.logger.error(f"錯誤：發送預約通知給老師失敗: {e}"); app.logger.info("備份通知到日誌：\n" + notification_base_text + "\n（發送失敗，請查看日誌）")
+                        else: app.logger.warning("警告：未設定老師的 User ID..."); app.logger.info(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
+                        reply_text_to_user = (f"收到您的預約請求：\n服務：{selected_service}\n時間：{formatted_dt}\n\n此預約請求已發送給老師，將由老師為您處理後續確認事宜，感謝您的耐心等候！")
+                        reply_message = TextMessage(text=reply_text_to_user)
+                        follow_up_message = create_main_menu_message()
+                    else:
+                        reply_message = conflict_or_error_message # 使用之前設定的錯誤訊息
+                        follow_up_message = create_main_menu_message()
+
+                except ValueError:
+                    app.logger.error(f"Failed to parse booking datetime for user {user_id}: {selected_datetime_str}")
+                    reply_message = TextMessage(text="選擇的日期時間格式有誤，請重新操作。")
+                    follow_up_message = create_main_menu_message()
+                except Exception as e:
+                    app.logger.exception(f"Error processing booking datetime for user {user_id}: {e}")
+                    reply_message = TextMessage(text="處理您的預約請求時發生錯誤，請稍後再試。")
+                    follow_up_message = create_main_menu_message()
+            else:
+                 app.logger.warning(f"Postback 'select_datetime' missing data for user {user_id}")
+                 reply_message = TextMessage(text="缺少預約資訊...")
+                 follow_up_message = create_main_menu_message()
+
+        # --- 處理 show_info Action ---
+        elif action == 'show_info':
+            topic = postback_data.get('topic')
+            if topic:
+                 app.logger.info(f"User {user_id} requested info for topic: {topic}")
+                 info_text = get_info_text(topic)
+                 contents = [FlexText(text=info_text, wrap=True)]
+                 if back_button: contents.append(back_button) # 加入返回按鈕
+                 bubble = FlexBubble(body=FlexBox(layout='vertical', spacing='md', contents=contents))
+                 reply_message = FlexMessage(alt_text=f"關於 {topic} 的說明", contents=bubble)
+            else: app.logger.warning(f"Postback 'show_info' missing topic for user {user_id}"); reply_message = TextMessage(text="無法識別資訊..."); follow_up_message = create_main_menu_message()
+
+        else: # 未知 action
+            app.logger.warning(f"Received unknown Postback Action from {user_id}: {action}")
+            reply_message = create_main_menu_message()
+
+    except json.JSONDecodeError: app.logger.error(f"Failed to parse Postback data from {user_id}: {postback_data_str}"); reply_message = TextMessage(text="系統無法處理請求..."); follow_up_message = create_main_menu_message()
+    except Exception as e: app.logger.exception(f"Error processing Postback from {user_id}: {e}"); reply_message = TextMessage(text="系統發生錯誤..."); follow_up_message = create_main_menu_message()
+
+    # --- 發送 Postback 的回覆 (一律用 Push) ---
+    messages_to_send = []
+    if reply_message: messages_to_send.append(reply_message)
+    if follow_up_message: messages_to_send.append(follow_up_message)
+    if messages_to_send: send_message(user_id, messages_to_send)
+
+
+# --- 主程式入口 ---
+if __name__ == "__main__":
+    port = int(os.getenv('PORT', 8080))
+    gunicorn_logger = logging.getLogger('gunicorn.error')
+    app.logger.handlers = gunicorn_logger.handlers
+    app.logger.setLevel(gunicorn_logger.level)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
