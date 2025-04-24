@@ -429,12 +429,10 @@ def handle_postback(event):
                 if selected_service in ["收驚", "卜卦"]:
                      handle_booking_request(user_id, selected_service)
                 elif selected_service == "法事":
-                    # *** 修改處：進入法事選擇狀態，顯示法事項目 ***
-                    user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}} # 初始化選擇列表
+                    user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
                     app.logger.info(f"State set for user {user_id}: selecting_rituals")
-                    reply_message = create_ritual_selection_message(user_id) # 顯示法事選擇畫面
+                    reply_message = create_ritual_selection_message(user_id)
                 elif selected_service == "問事/命理":
-                    # 顯示生日選擇器
                     picker_data = json.dumps({"action": "collect_birth_info"})
                     if len(picker_data.encode('utf-8')) > 300: app.logger.error(f"問事/命理 Picker data too long for user {user_id}"); reply_message = TextMessage(text="系統錯誤..."); follow_up_message = create_main_menu_message()
                     else:
@@ -450,23 +448,19 @@ def handle_postback(event):
             selected_ritual = postback_data.get('ritual')
             if selected_ritual:
                 app.logger.info(f"User {user_id} toggled ritual item: {selected_ritual}")
-                # 更新用戶狀態中的已選列表
                 if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals":
                     user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [selected_ritual]}}
                     app.logger.warning(f"User {user_id} was not in selecting_rituals state, resetting.")
                 else:
                     current_selection = user_states[user_id]["data"]["selected_rituals"]
-                    # 切換選擇狀態
                     if selected_ritual in current_selection:
                          current_selection.remove(selected_ritual)
                          app.logger.info(f"Removed '{selected_ritual}' from selection for {user_id}")
                     else:
                          current_selection.append(selected_ritual)
                          app.logger.info(f"Added '{selected_ritual}' to selection for {user_id}")
-
                 # 重新顯示選擇畫面
                 reply_message = create_ritual_selection_message(user_id)
-
             else:
                 app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}")
                 reply_message = TextMessage(text="發生錯誤，無法識別您選擇的法事項目。")
@@ -479,23 +473,17 @@ def handle_postback(event):
                  app.logger.info(f"User {user_id} confirmed rituals: {selected_rituals}")
                  if not selected_rituals:
                      reply_message = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成。")
-                     # 重新顯示選擇畫面 (需要 Push)
                      selection_menu = create_ritual_selection_message(user_id)
                      messages_to_send = [reply_message, selection_menu]
                      send_message(user_id, messages_to_send)
-                     reply_message = None # 清除 reply_message，因為已經發送
+                     reply_message = None # 清除 reply_message
                  else:
-                     # 計算總價
                      total_price, final_item_list = calculate_total_price(selected_rituals)
-                     # 處理預約請求 (傳遞列表和總價)
-                     handle_booking_request(user_id, final_item_list, total_price)
-                     # 清除狀態
-                     del user_states[user_id]
-                     # handle_booking_request 內部會發送主選單，這裡不需要 follow_up_message
+                     handle_booking_request(user_id, final_item_list, total_price) # 傳遞列表和總價
+                     del user_states[user_id] # 清除狀態
              else:
                  app.logger.warning(f"User {user_id} clicked confirm_rituals but not in correct state.")
-                 reply_message = create_main_menu_message() # 狀態不對，回主選單
-
+                 reply_message = create_main_menu_message()
 
         # --- 處理：選擇生日日期時間後 (問事流程) ---
         elif action == 'collect_birth_info':
