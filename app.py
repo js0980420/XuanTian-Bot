@@ -8,7 +8,7 @@ from flask import Flask, request, abort
 from linebot.v3 import (
     WebhookHandler
 )
-# *** 移除 QuickReply 和 QuickReplyButton 的所有匯入嘗試 ***
+# *** 確認已移除 QuickReply 和 QuickReplyButton 的所有匯入嘗試 ***
 from linebot.v3.messaging import (
     Configuration,
     ApiClient,
