@@ -33,11 +33,11 @@ from linebot.v3.webhooks import (
     PostbackEvent
 )
 from google.oauth2 import service_account
-from googleapiclient.discovery import build
+# from googleapiclient.discovery import build # No longer needed for booking checks
 import pytz
 
 # --- 加入版本標記 ---
-BOT_VERSION = "v1.10.0" # Increment version for date-less booking
+BOT_VERSION = "v1.11.1" # Increment patch version for fee update
 print(f"運行版本：{BOT_VERSION}")
 
 app = Flask(__name__)
@@ -48,20 +48,34 @@ app.logger.setLevel(logging.INFO)
 # --- 基本設定 ---
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
-calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '') # Keep for potential future use
-google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '') # Keep for potential future use
+# calendar_id = os.getenv('GOOGLE_CALENDAR_ID', '') # Keep for potential future use
+# google_credentials_json = os.getenv('GOOGLE_CREDENTIALS_JSON', '') # Keep for potential future use
 teacher_user_id = os.getenv('TEACHER_USER_ID', '')
+
+# --- 新增：服務費用設定 (更新版) ---
+SERVICE_FEES = {
+    "冤親債主 (個人)": 680,
+    "補桃花 (個人)": 680,
+    "補財庫 (個人)": 680,
+    "三合一 (個人)": 1800, # 冤親+桃花+財庫 (個人)
+    "冤親債主 (祖先)": 1800,
+    "補桃花 (祖先)": 1800,
+    "補財庫 (祖先)": 1800,
+    "三合一 (祖先)": 5400, # 假設 1800 * 3，如果價格不同請修改此處
+    "問事/命理": "請私訊老師洽詢",
+    "收驚": "請私訊老師洽詢",
+    "卜卦": "請私訊老師洽詢",
+}
+
+# --- 新增：匯款資訊 ---
+BANK_INFO = "🌟 匯款帳號：\n銀行：822 中國信託\n帳號：510540490990"
 
 # --- 環境變數檢查與日誌 ---
 print(f"DEBUG: LINE_CHANNEL_ACCESS_TOKEN: {'已設置' if channel_access_token else '未設置'}")
 print(f"DEBUG: LINE_CHANNEL_SECRET: {'已設置' if channel_secret else '未設置'}")
-# print(f"DEBUG: GOOGLE_CALENDAR_ID: {'已設置' if calendar_id else '未設置'}") # Calendar check removed from booking
-# print(f"DEBUG: GOOGLE_CREDENTIALS_JSON: {'已設置' if google_credentials_json else '未設置'}") # Calendar check removed from booking
 print(f"DEBUG: TEACHER_USER_ID: {teacher_user_id if teacher_user_id else '未設置'}")
 
 if not channel_access_token or not channel_secret: app.logger.critical("錯誤：請設定 LINE_CHANNEL_ACCESS_TOKEN 和 LINE_CHANNEL_SECRET 環境變數")
-# if not calendar_id: app.logger.warning("警告：未設定 GOOGLE_CALENDAR_ID 環境變數") # No longer strictly needed for booking
-# if not google_credentials_json: app.logger.warning("警告：未設定 GOOGLE_CREDENTIALS_JSON 環境變數") # No longer strictly needed for booking
 if not teacher_user_id: app.logger.warning("警告：未設定 TEACHER_USER_ID 環境變數，預約/問事通知將僅記錄在日誌中。")
 
 # 初始化 LINE Bot API
@@ -71,8 +85,8 @@ try:
     print("DEBUG: LINE Bot SDK configuration and handler initialized.")
 except Exception as init_err: app.logger.critical(f"Failed to initialize LINE Bot SDK: {init_err}")
 
-# Google Calendar API 設定 (保留，以防未來需要)
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+# Google Calendar API 設定 (保留，以防未來需要讀取)
+# SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
 
 # 時區設定
 TW_TIMEZONE = pytz.timezone('Asia/Taipei')
@@ -87,21 +101,17 @@ user_states = {} # {user_id: {"state": "awaiting_topic_and_question", "data": {.
 
 # --- 輔助函數：獲取服務說明文字 ---
 def get_info_text(topic):
-    # ... (程式碼同上) ...
     current_year = datetime.date.today().year
     if topic == '開運物':
-        guangzhou_shopping_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州採購加持玉器、水晶及各式開運飾品。\n🔹 如有特定需求或想預購，歡迎私訊老師。\n🔹 商品預計於老師回台後 ({current_year}/4/22之後) 陸續整理並寄出，感謝您的耐心等待！"
-        return ("【開運物品】\n提供招財符咒、開運手鍊、化煞吊飾、五行調和香氛等，均由老師親自開光加持。\n\n" + guangzhou_shopping_reminder)
+        return ("【開運物品】\n提供招財符咒、開運手鍊、化煞吊飾、五行調和香氛等，均由老師親自開光加持。\n如有特定需求或想預購，歡迎私訊老師。")
     elif topic == '生基品':
-         guangzhou_shengji_reminder = f"🛍️ 最新消息：\n🔹 {current_year}/4/11 - {current_year}/4/22 老師親赴廣州尋找適合的玉器等生基相關用品。\n🔹 如有興趣或需求，歡迎私訊老師洽詢。\n🔹 相關用品預計於老師回台後 ({current_year}/4/22之後) 整理寄出。"
-         return ("【生基用品】\n生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n老師提供相關諮詢與必需品代尋服務。\n\n" + guangzhou_shengji_reminder)
+         return ("【生基用品】\n生基是一種藉由風水寶地磁場能量，輔助個人運勢的秘法。\n\n老師提供相關諮詢與必需品代尋服務。\n如有興趣或需求，歡迎私訊老師洽詢。")
     else:
         app.logger.warning(f"get_info_text 收到未定義的主題: {topic}")
         return "抱歉，目前沒有關於「"+topic+"」的詳細說明。"
 
 # --- 計算時辰輔助函數 ---
 def get_shichen(hour):
-    # ... (程式碼同上) ...
     if not isinstance(hour, int) or hour < 0 or hour > 23: app.logger.warning(f"Invalid hour input for get_shichen: {hour}"); return "未知"
     app.logger.info(f"Calculating Shichen for input hour: {hour}")
     if hour >= 23 or hour < 1: return "子"
@@ -120,7 +130,6 @@ def get_shichen(hour):
 
 # --- 輔助函數：建立主選單 Flex Message ---
 def create_main_menu_message():
-    # ... (程式碼同上) ...
     buttons = []
     services = {"預約：問事/命理": {"action": "select_service", "service": "問事/命理"},"預約：法事": {"action": "select_service", "service": "法事"},"預約：收驚": {"action": "select_service", "service": "收驚"},"預約：卜卦": {"action": "select_service", "service": "卜卦"},"了解：開運物": {"action": "show_info", "topic": "開運物"},"了解：生基品": {"action": "show_info", "topic": "生基品"}}
     button_style = {'primary': '#A67B5B', 'secondary': '#BDBDBD'}
@@ -135,7 +144,6 @@ def create_main_menu_message():
 
 # --- 輔助函數：發送訊息 (處理 Push/Reply) ---
 def send_message(recipient_id, message, reply_token=None):
-    # ... (程式碼同上) ...
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
         message_list = [message] if not isinstance(message, list) else message
@@ -158,11 +166,14 @@ def send_message(recipient_id, message, reply_token=None):
 def handle_booking_request(user_id, service_name, reply_token=None):
     """處理不需要選日期的預約請求"""
     app.logger.info(f"Processing booking request for {user_id}, service: {service_name}")
+    price = SERVICE_FEES.get(service_name, "價格請洽老師") # 獲取價格
+
     notification_base_text = (
-        f"【服務請求】\n" # 改為通用標題
+        f"【服務請求】\n"
         f"--------------------\n"
         f"用戶ID: {user_id}\n"
         f"服務項目: {service_name}\n"
+        f"費用: {price}\n" # 加入費用
         f"--------------------"
     )
     if teacher_user_id:
@@ -177,10 +188,18 @@ def handle_booking_request(user_id, service_name, reply_token=None):
         app.logger.warning(f"警告：未設定老師的 User ID，服務請求通知僅記錄在日誌中 ({service_name})。")
         app.logger.info(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
 
-    reply_text_to_user = (
-        f"收到您的「{service_name}」服務請求！\n\n"
-        f"此請求已發送給老師，將由老師為您處理後續確認事宜，感謝您的耐心等候！"
-    )
+    # 組合回覆客戶的訊息
+    reply_text_to_user = f"收到您的「{service_name}」服務請求！\n\n"
+    if isinstance(price, int): # 如果是數字價格 (法事)
+         reply_text_to_user += f"費用：NT${price}\n\n"
+         reply_text_to_user += "法事將於下個月由老師擇日統一進行。\n" # 更新說明
+         reply_text_to_user += "請您完成匯款後告知末五碼，以便老師為您安排：\n"
+         reply_text_to_user += f"{BANK_INFO}\n\n" # 加入匯款資訊
+         reply_text_to_user += "感謝您的預約！"
+    else: # 如果是 "請私訊老師洽詢" (問事/收驚/卜卦)
+        reply_text_to_user += f"費用：{price}\n\n"
+        reply_text_to_user += "此請求已發送給老師，將由老師為您處理後續確認與報價事宜，感謝您的耐心等候！"
+
     # 先用 Reply 回覆，再用 Push 發主選單
     send_message(user_id, TextMessage(text=reply_text_to_user), reply_token)
     main_menu_message = create_main_menu_message()
@@ -205,8 +224,10 @@ def handle_follow(event):
     user_id = event.source.user_id
     app.logger.info(f"User {user_id} added the bot.")
     if user_id in user_states: del user_states[user_id]
+    # *** 移除歡迎訊息中的 4 月提醒 ***
+    welcome_text = "宇宙玄天院 歡迎您！\n感謝您加入好友！我是您的命理小幫手。\n點擊下方按鈕選擇服務或了解詳情："
     main_menu_message = create_main_menu_message()
-    send_message(user_id, main_menu_message)
+    send_message(user_id, [TextMessage(text=welcome_text), main_menu_message])
 
 @handler.add(MessageEvent, message=TextMessageContent)
 def handle_text_message(event):
@@ -231,13 +252,16 @@ def handle_text_message(event):
             app.logger.info(f"User {user_id} provided topic and question: '{topic_and_question}'")
             birth_info_str = user_data.get("birth_info_str", "未提供"); shichen = user_data.get("shichen", "未知")
             formatted_birth_info = user_data.get("formatted_birth_info", birth_info_str)
-            notification_base_text = (f"【命理問事請求】\n--------------------\n用戶ID: {user_id}\n提供生日: {formatted_birth_info}\n對應時辰: {shichen}\n主題與問題: {topic_and_question}\n--------------------")
+            price = SERVICE_FEES.get("問事/命理", "請私訊老師洽詢") # 獲取問事價格
+
+            notification_base_text = (f"【命理問事請求】\n--------------------\n用戶ID: {user_id}\n提供生日: {formatted_birth_info}\n對應時辰: {shichen}\n主題與問題: {topic_and_question}\n費用: {price}\n--------------------")
             app.logger.info(f"準備處理命理問事請求: {notification_base_text}")
             if teacher_user_id:
                 try: push_notification_text = notification_base_text + "\n請老師抽空親自回覆"; send_message(teacher_user_id, TextMessage(text=push_notification_text)); app.logger.info("命理問事通知已嘗試發送給老師。")
                 except Exception as e: app.logger.error(f"錯誤：發送命理問事通知給老師失敗: {e}"); app.logger.info("備份通知到日誌：\n" + notification_base_text + "\n（發送失敗，請查看日誌）")
             else: app.logger.warning("警告：未設定老師的 User ID..."); app.logger.info(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
-            reply_text_to_user = f"收到您的資訊！\n生日時辰：{formatted_birth_info} ({shichen}時)\n您想詢問：{topic_and_question[:50]}{'...' if len(topic_and_question)>50 else ''}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！"
+
+            reply_text_to_user = f"收到您的資訊！\n生日時辰：{formatted_birth_info} ({shichen}時)\n您想詢問：{topic_and_question[:50]}{'...' if len(topic_and_question)>50 else ''}\n費用：{price}\n\n老師會在空閒時親自查看，並針對您的問題回覆您，請耐心等候，謝謝！" # 加入費用提示
             send_message(user_id, TextMessage(text=reply_text_to_user), reply_token)
             main_menu_message = create_main_menu_message()
             send_message(user_id, main_menu_message)
@@ -281,17 +305,17 @@ def handle_postback(event):
             selected_service = postback_data.get('service')
             if selected_service:
                 app.logger.info(f"User {user_id} selected service: {selected_service}")
-                # *** 修改處：收驚和卜卦直接處理請求 ***
                 if selected_service in ["收驚", "卜卦"]:
-                     handle_booking_request(user_id, selected_service) # 直接發送請求
-                     # 不需要設定 reply_message 或 follow_up_message，因為 handle_booking_request 會處理
+                     handle_booking_request(user_id, selected_service)
                 elif selected_service == "法事":
-                    # 顯示法事項目選擇
+                    # 顯示法事項目選擇 (加入價格)
                     ritual_buttons = []
                     ritual_items = ["冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)", "三合一 (個人)", "冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)", "三合一 (祖先)"]
                     for item in ritual_items:
+                        price = SERVICE_FEES.get(item, "洽詢") # 獲取價格
+                        label_with_price = f"{item} (NT${price})" if isinstance(price, int) else f"{item} ({price})" # 加上價格標示
                         ritual_postback_data = json.dumps({"action": "select_ritual_item", "ritual": item})
-                        if len(ritual_postback_data.encode('utf-8')) <= 300: ritual_buttons.append(FlexButton(action=PostbackAction(label=item, data=ritual_postback_data, display_text=f"預約法事：{item}"), style='primary', color='#A67B5B', margin='sm', height='sm'))
+                        if len(ritual_postback_data.encode('utf-8')) <= 300: ritual_buttons.append(FlexButton(action=PostbackAction(label=label_with_price, data=ritual_postback_data, display_text=f"預約法事：{item}"), style='primary', color='#A67B5B', margin='sm', height='sm'))
                         else: app.logger.warning(f"法事項目按鈕 Postback data 過長: {ritual_postback_data}")
                     contents = [FlexText(text='請選擇您想預約的法事項目：', wrap=True, size='md')]
                     contents.extend(ritual_buttons)
@@ -315,15 +339,8 @@ def handle_postback(event):
             selected_ritual = postback_data.get('ritual')
             if selected_ritual:
                 app.logger.info(f"User {user_id} selected ritual item: {selected_ritual}")
-                # 檢查是否為 4 月
-                current_month = datetime.date.today().month
-                if current_month == 4:
-                    app.logger.info(f"Ritual booking blocked for {user_id} (April)")
-                    reply_message = TextMessage(text=f"抱歉，{datetime.date.today().year}年4月老師在大陸，期間無法進行法事，請下個月再預約，謝謝。")
-                    follow_up_message = create_main_menu_message()
-                else:
-                    # 非 4 月，直接處理請求
-                    handle_booking_request(user_id, selected_ritual) # 使用具體法事名稱
+                # *** 修改處：直接處理法事請求，包含價格和提醒 ***
+                handle_booking_request(user_id, selected_ritual) # 使用具體法事名稱
             else:
                 app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}")
                 reply_message = TextMessage(text="發生錯誤，無法識別您選擇的法事項目。")
@@ -343,17 +360,15 @@ def handle_postback(event):
                 except Exception as e: app.logger.exception(f"Error processing birth info for user {user_id}: {e}"); reply_message = TextMessage(text="處理生日資訊錯誤..."); follow_up_message = create_main_menu_message()
             else: app.logger.warning(f"Postback 'collect_birth_info' missing datetime for user {user_id}"); reply_message = TextMessage(text="未收到生日時間..."); follow_up_message = create_main_menu_message()
 
-        # --- 處理：選擇預約日期時間後 (僅用於收驚/卜卦，法事已在 select_ritual_item 處理) ---
+        # --- 處理：選擇預約日期時間後 (此路徑理論上不再使用) ---
         elif action == 'select_datetime':
-            selected_service = postback_data.get('service') # 應該只會是 收驚 或 卜卦
-            selected_datetime_str = event.postback.params.get('datetime') # 雖然選了，但不用
-            if selected_service and selected_datetime_str:
-                 app.logger.info(f"User {user_id} selected datetime for service '{selected_service}' (datetime ignored)")
-                 # 直接處理請求，忽略選擇的時間
+             selected_service = postback_data.get('service')
+             app.logger.warning(f"Unexpected 'select_datetime' action for service: {selected_service}. Handling as direct booking.")
+             if selected_service:
                  handle_booking_request(user_id, selected_service)
-            else:
-                 app.logger.warning(f"Postback 'select_datetime' missing data for user {user_id}")
-                 reply_message = TextMessage(text="缺少預約資訊...")
+             else:
+                 app.logger.error(f"Postback 'select_datetime' missing service for user {user_id}")
+                 reply_message = TextMessage(text="發生錯誤，缺少服務資訊。")
                  follow_up_message = create_main_menu_message()
 
         # --- 處理 show_info Action ---
