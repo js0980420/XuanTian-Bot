@@ -306,7 +306,7 @@ def callback():
     return 'OK'
 
 # --- 處理訊息事件 ---
-@ler.add(MessageEvent, message=TextMessageContent)
+@handler.add(MessageEvent, message=TextMessageContent)
 def le_message(event):
     """處理文字訊息"""
     user_message = event.message.text.strip() # 去除前後空白
