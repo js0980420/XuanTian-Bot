@@ -1,5 +1,5 @@
 Flask==2.3.3
-line-bot-sdk==3.17.0
+line-bot-sdk>=3.25.0
 google-api-python-client==2.45.0
 google-auth==2.6.0
 google-auth-httplib2==0.1.0
