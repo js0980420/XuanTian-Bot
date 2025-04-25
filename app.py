@@ -26,8 +26,8 @@ from linebot.v3.messaging import (
     FlexBubble, FlexBox, FlexText, FlexButton, FlexSeparator, FlexImage,
     # --- 匯入 URIAction 和 MessageAction ---
     URIAction, MessageAction, # MessageAction 用於按鈕觸發文字訊息
-    # --- 匯入 TemplateSendMessage 和 ButtonsTemplate ---
-    TemplateSendMessage, ButtonsTemplate
+    # --- 匯入 TemplateMessage 和 ButtonsTemplate ---
+    TemplateMessage, ButtonsTemplate
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -241,7 +241,7 @@ def create_ritual_prices_flex():
 
 # --- Template Message 產生函式 ---
 def create_text_with_menu_button(text_content, alt_text="訊息"):
-    """產生包含文字內容和返回主選單按鈕的 TemplateSendMessage"""
+    """產生包含文字內容和返回主選單按鈕的 TemplateMessage"""
     buttons_template = ButtonsTemplate(
         text=text_content[:160], # ButtonsTemplate 的 text 限制為 160 字元
         actions=[
@@ -249,7 +249,7 @@ def create_text_with_menu_button(text_content, alt_text="訊息"):
         ]
         # 可以加入 title, thumbnail_image_url 等參數
     )
-    return TemplateSendMessage(
+    return TemplateMessage(
         alt_text=alt_text, # 在通知或無法顯示 Template 時的替代文字
         template=buttons_template
     )
