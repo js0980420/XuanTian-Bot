@@ -154,34 +154,33 @@ def create_main_services_flex():
             spacing='sm',
             contents=[
                 FlexButton(
-                    action={'type': 'message', 'label': '如何預約', 'text': '如何預約'},
+                    action=MessageAction(label='如何預約', text='如何預約'),
                     style='primary',
-                    color='#8C6F4E', # 淺棕色
+                    color='#8C6F4E',
                     height='sm'
                 ),
                 FlexButton(
-                    action={'type': 'message', 'label': '開運 生基 煙供產品', 'text': '開運產品'},
-                    style='secondary',
-                    color='#EFEBE4', # 米白色背景
-                    height='sm'
-                ),
-                 FlexButton(
-                    action=URIAction(label='追蹤我們的 IG', uri=ig_link), # 使用 URIAction 打開網頁
+                    action=MessageAction(label='開運 生基 煙供產品', text='開運產品'),
                     style='secondary',
                     color='#EFEBE4',
                     height='sm'
                 ),
                 FlexButton(
-                    action={'type': 'message', 'label': '法事項目與費用', 'text': '法事項目'},
+                    action=URIAction(label='追蹤我們的 IG', uri=ig_link),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='法事項目與費用', text='法事項目'),
                     style='secondary',
                     color='#EFEBE4',
                     height='sm'
                 ),
             ]
         ),
-        styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}} # 米白色背景
+        styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}}
     )
-    # 主選單本身不需要返回按鈕
     return FlexMessage(alt_text='主要服務項目', contents=bubble)
 
 def create_ritual_prices_flex():
@@ -282,8 +281,8 @@ def notify_teacher(message_text):
 @app.route("/callback", methods=['POST'])
 def callback():
     # 檢查 handler 是否成功初始化
-    if handler is None:
-        logging.error("Webhook handler is not initialized. Check LINE_CHANNEL_SECRET.")
+    if ler is None:
+        logging.error("Webhook ler is not initialized. Check LINE_CHANNEL_SECRET.")
         abort(500) # 內部伺服器錯誤
 
     # get X-Line-Signature header value
@@ -293,22 +292,22 @@ def callback():
     body = request.get_data(as_text=True)
     app.logger.info("Request body: " + body)
 
-    # handle webhook body
+    # le webhook body
     try:
-        handler.handle(body, signature)
+        ler.le(body, signature)
     except InvalidSignatureError:
         print("Invalid signature. Please check your channel access token/secret.")
         abort(400)
     except Exception as e:
-        print(f"Error handling webhook: {e}")
-        logging.exception("Error handling webhook:") # 記錄詳細錯誤堆疊
+        print(f"Error ling webhook: {e}")
+        logging.exception("Error ling webhook:") # 記錄詳細錯誤堆疊
         abort(500)
 
     return 'OK'
 
 # --- 處理訊息事件 ---
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event):
+@ler.add(MessageEvent, message=TextMessageContent)
+def le_message(event):
     """處理文字訊息"""
     user_message = event.message.text.strip() # 去除前後空白
     user_id = event.source.user_id # 取得使用者 ID (保留，可能未來其他地方會用到)
@@ -398,13 +397,12 @@ def handle_message(event):
 def handle_follow(event):
     """當使用者加入好友時發送歡迎訊息與按鈕選單"""
     user_id = event.source.user_id
-    print(f"User {user_id} followed the bot.") # 可以在後台紀錄
-    notify_teacher("有新使用者加入好友。") # 通知老師有新好友
+    logging.info(f"User {user_id} followed the bot.")
+    notify_teacher(f"有新使用者加入好友：{user_id}")
 
-    # 檢查 Line Bot API 設定是否有效
     if not channel_access_token:
         logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot send follow message.")
-        return # 無法發送
+        return
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
@@ -416,30 +414,34 @@ def handle_follow(event):
 本院奉玄天上帝為主神，由雲真居士領導修持道脈，融合儒、釋、道三教之理與現代身心靈智慧，致力於指引眾生走上自性覺醒與命運轉化之路。
 
 主要服務項目包含：
-•	命理諮詢（數字易經、八字、問事）
-•	風水勘察與調理
-•	補財庫、煙供、生基、安斗、等客製化法會儀軌
-•	點燈祈福、開運蠟燭
-•	命理課程與法術課程
+• 命理諮詢（數字易經、八字、問事）
+• 風水勘察與調理
+• 補財庫、煙供、生基、安斗、等客製化法會儀軌
+• 點燈祈福、開運蠟燭
+• 命理課程與法術課程
 
 本院深信：每一個靈魂都能連結宇宙本源，找到生命的方向與力量。讓我們陪伴您走向富足、自主與心靈的圓滿之路。
 
 您可以點擊下方按鈕查看詳細服務項目與資訊："""
         welcome_message = TextMessage(text=welcome_text)
-
-        services_flex = create_main_services_flex() # 主選單 Flex Message
+        services_flex = create_main_services_flex()
 
         try:
-            # 同時發送歡迎文字和 Flex Message 按鈕選單
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[welcome_message, services_flex] # 將文字和 Flex 一起發送
+                    messages=[welcome_message, services_flex]
                 )
             )
+            logging.info(f"Successfully sent welcome message to user {user_id}")
         except Exception as e:
-            logging.error(f"Error sending follow message: {e}")
-
+            logging.error(f"Error sending follow message to user {user_id}: {e}")
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text="歡迎加入宇宙玄天院！請輸入「服務項目」查看選單。")]
+                )
+            )
 
 # --- 主程式入口 ---
 if __name__ == "__main__":
