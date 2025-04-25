@@ -235,7 +235,7 @@ def notify_teacher(message_text):
             line_bot_api.push_message(
                 PushMessageRequest(
                     to=teacher_user_id,
-                    messages=[TextMessage(text=message_text)]
+                    messages=[TextMessage(text=message_text)] # 只發送傳入的文字
                 )
             )
             logging.info(f"Notification sent to teacher: {teacher_user_id}")
@@ -276,7 +276,7 @@ def callback():
 def handle_message(event):
     """處理文字訊息"""
     user_message = event.message.text.strip() # 去除前後空白
-    user_id = event.source.user_id # 取得使用者 ID
+    user_id = event.source.user_id # 取得使用者 ID (保留，可能未來其他地方會用到)
     reply_content = None
 
     # 檢查 Line Bot API 設定是否有效
@@ -292,8 +292,8 @@ def handle_message(event):
             reply_content = create_main_services_flex()
         elif user_message in ["預約", "預約諮詢", "問事", "命理問事", "算命"]:
             reply_content = TextMessage(text=booking_instructions)
-            # 可以在這裡加入通知老師的邏輯
-            notify_teacher(f"使用者 {user_id} 查詢了預約/問事須知。")
+            # 修改通知內容，不包含使用者 ID
+            notify_teacher("有使用者查詢了預約/問事須知。")
         elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
             reply_content = create_ritual_prices_flex()
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
@@ -323,7 +323,8 @@ def handle_message(event):
                     # available_slots = parse_events_to_find_slots(events_result) # 您需要實作這個函式
                     # reply_content = TextMessage(text=f"目前可預約時段：\n{available_slots}") # 組合回覆訊息
                     reply_content = TextMessage(text="查詢可預約時間功能開發中...") # 暫時回覆
-                    notify_teacher(f"使用者 {user_id} 正在查詢可預約時間。") # 通知老師
+                    # 修改通知內容，不包含使用者 ID
+                    notify_teacher("有使用者正在查詢可預約時間。") # 通知老師
                 except Exception as e:
                     logging.error(f"Error accessing Google Calendar: {e}")
                     reply_content = TextMessage(text="查詢可預約時間失敗，請稍後再試。")
@@ -338,7 +339,8 @@ def handle_message(event):
 
             # --- 將未知訊息轉發給老師 (範例) ---
             # 如果收到無法處理的訊息，可以考慮轉發給老師處理
-            # notify_teacher(f"收到使用者 {user_id} 的訊息，無法自動處理：\n\n{user_message}")
+            # 修改通知內容，保留訊息本身，但不顯示 User ID
+            # notify_teacher(f"收到無法自動處理的訊息：\n\n{user_message}")
             pass # 如果不想預設回覆，可以用 pass
 
         # --- 發送回覆 ---
@@ -357,10 +359,11 @@ def handle_message(event):
 # --- 處理加入好友事件 ---
 @handler.add(FollowEvent)
 def handle_follow(event):
-    """當使用者加入好友時發送歡迎訊息"""
+    """當使用者加入好友時發送歡迎訊息與按鈕選單"""
     user_id = event.source.user_id
     print(f"User {user_id} followed the bot.") # 可以在後台紀錄
-    notify_teacher(f"新使用者加入：{user_id}") # 通知老師有新好友
+    # 修改通知內容，不包含使用者 ID
+    notify_teacher("有新使用者加入好友。") # 通知老師有新好友
 
     # 檢查 Line Bot API 設定是否有效
     if not channel_access_token:
@@ -369,7 +372,7 @@ def handle_follow(event):
 
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        # 發送歡迎訊息和主要服務選單
+        # 發送歡迎訊息和主要服務選單 (包含按鈕)
         welcome_message = TextMessage(text="""歡迎加入【宇宙玄天院】！
 
 這裡是開啟靈性覺醒的殿堂，由雲真居士領導修持。
@@ -377,13 +380,14 @@ def handle_follow(event):
 我們融合儒、釋、道三教之理與現代身心靈智慧，致力於指引您走上自性覺醒與命運轉化之路。
 
 您可以輸入或點擊下方按鈕查看我們的服務項目：""")
-        services_flex = create_main_services_flex()
+        services_flex = create_main_services_flex() # 取得包含按鈕的 Flex Message
 
         try:
+            # 同時發送歡迎文字和 Flex Message 按鈕選單
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[welcome_message, services_flex]
+                    messages=[welcome_message, services_flex] # 將文字和 Flex 一起發送
                 )
             )
         except Exception as e:
@@ -414,3 +418,4 @@ if __name__ == "__main__":
     # host='0.0.0.0' 讓 Render 可以正確訪問
     logging.info(f"Starting Flask server on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
