@@ -175,85 +175,58 @@ def create_main_services_flex():
     )
     return FlexMessage(alt_text='主要服務項目', contents=bubble)
 
-def create_ritual_selection_flex(user_id):
+def create_ritual_selection_template(user_id):
     # 獲取當前使用者的選擇
     selections = user_ritual_selections.get(user_id, [])
     
     # 定義所有選項
     ritual_options = [
-        {"label": "三合一/一條龍（冤親債主+補桃花+補財庫）", "price": 1800},
-        {"label": "冤親債主", "price": 680},
-        {"label": "補桃花", "price": 680},
-        {"label": "補財庫", "price": 680},
-        {"label": "祖先", "price": 1800}
+        {"label": "三合一/一條龍", "full_label": "三合一/一條龍（冤親債主+補桃花+補財庫）", "price": 1800},
+        {"label": "冤親債主", "full_label": "冤親債主", "price": 680},
+        {"label": "補桃花", "full_label": "補桃花", "price": 680},
+        {"label": "補財庫", "full_label": "補財庫", "price": 680},
+        {"label": "祖先", "full_label": "祖先", "price": 1800}
     ]
 
-    # 顯示選項說明
-    body_contents = [
-        FlexText(text='請選擇您需要的法事項目：', wrap=True, size='sm', color='#333333'),
-        FlexSeparator(margin='md'),
-    ]
-    for option in ritual_options:
-        body_contents.append(
-            FlexText(
-                text=f'• {option["label"]}：NT$ {option["price"]}',
-                wrap=True,
-                size='sm',
-                margin='sm'
-            )
+    # 顯示已選擇的項目
+    selected_text = "已選擇：" + (", ".join(selections) if selections else "無")
+    
+    # 第一個訊息：選項按鈕（最多 4 個按鈕）
+    actions = []
+    for i in range(min(4, len(ritual_options))):
+        option = ritual_options[i]
+        label = f"{'✅ ' if option['full_label'] in selections else ''}{option['label']}"
+        actions.append(MessageAction(label=label, text=f"選擇法事: {option['full_label']}"))
+    
+    first_message = TemplateMessage(
+        alt_text="法事項目選擇",
+        template=ButtonsTemplate(
+            text=f"請選擇您需要的法事項目：\n• 三合一/一條龍（冤親債主+補桃花+補財庫）：NT$ 1800\n• 冤親債主：NT$ 680\n• 補桃花：NT$ 680\n• 補財庫：NT$ 680\n• 祖先：NT$ 1800\n\n{selected_text}",
+            actions=actions
         )
-    body_contents.extend([
-        FlexSeparator(margin='lg'),
-        FlexText(text='點擊下方按鈕選擇項目，已選擇的項目會反白。選擇完後請點擊「完成選擇」。', size='xs', color='#888888', wrap=True)
-    ])
-
-    # 創建選項按鈕，根據是否選擇來改變樣式（模擬反白）
-    footer_buttons = []
-    for option in ritual_options:
-        footer_buttons.append(
-            FlexButton(
-                action=MessageAction(label=option["label"], text=f'選擇法事: {option["label"]}'),
-                style='primary' if option["label"] in selections else 'secondary',
-                color='#8C6F4E' if option["label"] in selections else '#EFEBE4',
-                height='sm'
-            )
-        )
-    footer_buttons.extend([
-        FlexButton(
-            action=MessageAction(label='完成選擇', text='完成法事選擇'),
-            style='primary',
-            color='#8C6F4E',
-            height='sm',
-            margin='md'
-        ),
-        FlexButton(
-            action=create_return_to_menu_button(),
-            style='link',
-            height='sm',
-            color='#555555'
-        ),
-    ])
-
-    bubble = FlexBubble(
-        header=FlexBox(
-            layout='vertical',
-            contents=[
-                FlexText(text='法事項目選擇', weight='bold', size='xl', color='#5A3D1E', align='center')
-            ]
-        ),
-        body=FlexBox(
-            layout='vertical',
-            spacing='md',
-            contents=body_contents
-        ),
-        footer=FlexBox(
-            layout='vertical',
-            spacing='sm',
-            contents=footer_buttons
-        ),
-        styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}}
     )
-    return FlexMessage(alt_text='法事項目選擇', contents=bubble)
+
+    # 第二個訊息：剩餘選項 + 完成選擇 + 返回主選單
+    remaining_actions = []
+    for i in range(4, len(ritual_options)):
+        option = ritual_options[i]
+        label = f"{'✅ ' if option['full_label'] in selections else ''}{option['label']}"
+        remaining_actions.append(MessageAction(label=label, text=f"選擇法事: {option['full_label']}"))
+    
+    remaining_actions.extend([
+        MessageAction(label="完成選擇", text="完成法事選擇"),
+        create_return_to_menu_button()
+    ])
+
+    second_message = TemplateMessage(
+        alt_text="法事項目選擇（續）",
+        template=ButtonsTemplate(
+            text="請繼續選擇或完成：",
+            actions=remaining_actions
+        )
+    )
+
+    return [first_message, second_message]
 
 def create_ritual_confirmation_flex(user_id):
     selections = user_ritual_selections.get(user_id, [])
@@ -646,7 +619,7 @@ def handle_message(event):
         elif user_message in ["法事"]:
             # 初始化使用者的法事選擇
             user_ritual_selections[user_id] = []
-            reply_content = create_ritual_selection_flex(user_id)
+            reply_content = create_ritual_selection_template(user_id)
             notify_teacher("有使用者查詢了法事項目。")
         elif user_message.startswith("選擇法事: "):
             # 記錄使用者的法事選擇
@@ -660,7 +633,7 @@ def handle_message(event):
             else:
                 user_ritual_selections[user_id].append(selected_ritual)
             
-            reply_content = create_ritual_selection_flex(user_id)
+            reply_content = create_ritual_selection_template(user_id)
         elif user_message == "完成法事選擇":
             reply_content = create_ritual_confirmation_flex(user_id)
         elif user_message == "確認法事費用":
@@ -720,12 +693,21 @@ def handle_message(event):
 
         if reply_content:
             try:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply_content]
+                # 如果 reply_content 是列表（多個訊息），則逐一發送
+                if isinstance(reply_content, list):
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=reply_content
+                        )
                     )
-                )
+                else:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[reply_content]
+                        )
+                    )
             except Exception as e:
                 logging.error(f"Error sending reply message: {e}")
 
@@ -798,7 +780,7 @@ def handle_follow(event):
 
 宇宙玄天院｜開啟靈性覺醒的殿堂
 
-本院奉玄天上帝為主神，由雲真居士領導修持道脈，融合儒、釋、道三教之理與現代身心靈智慧，致力於指引眾生走上自性覺醒與命運轉化之路。
+本院奉玄天上帝為主神，由雲真居士領導修持道脈，融合儒、釋、道三教之理與現代身心靈智慧，致力於指引眾生走GARAGE上自性覺醒與命運轉化之路。
 
 主要服務項目包含：
 • 命理諮詢（數字易經、八字、問事）
