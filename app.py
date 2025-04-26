@@ -114,6 +114,9 @@ followed_users = set()
 # 儲存使用者的生日（臨時儲存，等待時辰選擇）
 user_birthday_data = {}
 
+# 儲存使用者的法事選擇（臨時儲存，等待確認）
+user_ritual_selections = {}
+
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
     return MessageAction(label='返回主選單', text='服務項目')
@@ -172,42 +175,128 @@ def create_main_services_flex():
     )
     return FlexMessage(alt_text='主要服務項目', contents=bubble)
 
-def create_ritual_prices_flex():
-    contents = [
-        FlexText(text='法事項目與費用', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
-    ]
-    for item, prices in ritual_prices_info.items():
-        price_texts = []
-        if "single" in prices:
-            price_texts.append(f"NT$ {prices['single']} / 份")
-        if "combo" in prices:
-            price_texts.append(f"(三合一/一條龍: 三份 NT$ {prices['combo']})")
+def create_ritual_selection_flex():
+    bubble = FlexBubble(
+        header=FlexBox(
+            layout='vertical',
+            contents=[
+                FlexText(text='法事項目選擇', weight='bold', size='xl', color='#5A3D1E', align='center')
+            ]
+        ),
+        body=FlexBox(
+            layout='vertical',
+            spacing='md',
+            contents=[
+                FlexText(text='請選擇您需要的法事項目：', wrap=True, size='sm', color='#333333'),
+                FlexSeparator(margin='md'),
+                FlexText(text='• 冤親債主：NT$ 680', wrap=True, size='sm', margin='sm'),
+                FlexText(text='• 補桃花：NT$ 680', wrap=True, size='sm', margin='sm'),
+                FlexText(text='• 補財庫：NT$ 680', wrap=True, size='sm', margin='sm'),
+                FlexText(text='• 祖先：NT$ 1800', wrap=True, size='sm', margin='sm'),
+                FlexSeparator(margin='lg'),
+                FlexText(text='選擇後點擊「確認選擇」計算費用。', size='xs', color='#888888', wrap=True)
+            ]
+        ),
+        footer=FlexBox(
+            layout='vertical',
+            spacing='sm',
+            contents=[
+                FlexButton(
+                    action=MessageAction(label='冤親債主', text='選擇法事: 冤親債主'),
+                    style='primary',
+                    color='#8C6F4E',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='補桃花', text='選擇法事: 補桃花'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='補財庫', text='選擇法事: 補財庫'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='祖先', text='選擇法事: 祖先'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='確認選擇', text='確認法事選擇'),
+                    style='primary',
+                    color='#8C6F4E',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=create_return_to_menu_button(),
+                    style='link',
+                    height='sm',
+                    color='#555555'
+                ),
+            ]
+        ),
+        styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}}
+    )
+    return FlexMessage(alt_text='法事項目選擇', contents=bubble)
 
+def create_ritual_confirmation_flex(user_id):
+    selections = user_ritual_selections.get(user_id, [])
+    if not selections:
+        return create_text_with_menu_button("您尚未選擇任何法事項目。", alt_text="無選擇")
+
+    # 計算費用
+    total_cost = 0
+    has_creditor = "冤親債主" in selections
+    has_peach = "補桃花" in selections
+    has_wealth = "補財庫" in selections
+
+    if has_creditor and has_peach and has_wealth:
+        # 三合一優惠價格
+        total_cost = ritual_prices_info["冤親債主/補桃花/補財庫"]["combo"]
+        selections = [s for s in selections if s not in ["冤親債主", "補桃花", "補財庫"]]
+        selections.append("冤親債主/補桃花/補財庫（三合一/一條龍）")
+    else:
+        # 單項價格
+        for item in selections:
+            if item in ritual_prices_info:
+                total_cost += ritual_prices_info[item]["single"]
+
+    # 顯示選擇與總費用
+    contents = [
+        FlexText(text='您的法事選擇', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
+    ]
+    for item in selections:
+        price = ritual_prices_info[item]["single"] if item != "冤親債主/補桃花/補財庫（三合一/一條龍）" else ritual_prices_info["冤親債主/補桃花/補財庫"]["combo"]
         contents.extend([
             FlexSeparator(margin='lg'),
             FlexText(text=item, weight='bold', size='md', margin='md'),
-            FlexText(text=" ".join(price_texts), size='sm', color='#555555', wrap=True)
+            FlexText(text=f"NT$ {price}", size='sm', color='#555555', wrap=True)
         ])
 
-    if "冤親債主/補桃花/補財庫" in ritual_prices_info and "combo" in ritual_prices_info["冤親債主/補桃花/補財庫"]:
-        contents.append(FlexSeparator(margin='lg'))
-        contents.append(FlexText(text='⚜️ 三合一/一條龍包含：冤親債主、補桃花、補財庫。', size='sm', color='#888888', wrap=True, margin='md'))
-        contents.append(FlexText(text='特別說明：', size='sm', color='#888888', wrap=True, margin='md'))
-        contents.append(FlexText(text='官司、考運、身體、小人 → 冤親債主', size='sm', color='#888888', wrap=True))
-        contents.append(FlexText(text='財運、事業、防破財 → 補財庫', size='sm', color='#888888', wrap=True))
-        contents.append(FlexText(text='感情、貴人、客戶、桃花 → 補桃花', size='sm', color='#888888', wrap=True))
-        contents.append(FlexText(text='若有特殊需求，請私訊老師！', size='sm', color='#888888', wrap=True))
+    contents.extend([
+        FlexSeparator(margin='lg'),
+        FlexText(text=f'總費用：NT$ {total_cost}', weight='bold', size='lg', color='#8C6F4E', margin='md'),
+        FlexText(text='請確認您的選擇，確認後將提供匯款資訊。', size='sm', color='#888888', wrap=True)
+    ])
 
-    contents.append(FlexSeparator(margin='xl'))
     footer_buttons = [
         FlexButton(
-            action={'type': 'message', 'label': '了解匯款資訊', 'text': '匯款資訊'},
+            action=MessageAction(label='確認無誤', text='確認法事費用'),
             style='primary',
             color='#8C6F4E',
             height='sm',
             margin='md'
         ),
-        FlexSeparator(margin='md'),
+        FlexButton(
+            action=MessageAction(label='重新選擇', text='法事'),
+            style='secondary',
+            color='#EFEBE4',
+            height='sm'
+        ),
         FlexButton(
             action=create_return_to_menu_button(),
             style='link',
@@ -221,7 +310,26 @@ def create_ritual_prices_flex():
         footer=FlexBox(layout='vertical', spacing='sm', contents=footer_buttons),
         styles={'body': {'backgroundColor': '#F9F9F9'}, 'footer': {'separator': True}}
     )
-    return FlexMessage(alt_text='法事項目與費用', contents=bubble)
+    return FlexMessage(alt_text='法事選擇確認', contents=bubble)
+
+def create_payment_info_message():
+    payment_text = f"""【匯款資訊】
+🌟 匯款帳號：
+銀行代碼：{payment_details['bank_code']}
+銀行名稱：{payment_details['bank_name']}
+帳號：{payment_details['account_number']}
+
+（匯款後請點擊下方「匯款完成」按鈕並告知末五碼以便核對）"""
+    return TemplateMessage(
+        alt_text="匯款資訊",
+        template=ButtonsTemplate(
+            text=payment_text[:160],
+            actions=[
+                MessageAction(label='匯款完成', text='匯款完成'),
+                create_return_to_menu_button()
+            ]
+        )
+    )
 
 def create_booking_submenu_flex():
     bubble = FlexBubble(
@@ -413,7 +521,7 @@ def setup_rich_menu():
                         "height": 843
                     },
                     "action": {
-                        "type": "message",  # 改為 message 類型，因為回應需要返回主選單按鈕
+                        "type": "message",
                         "text": "IG"
                     }
                 },
@@ -531,17 +639,51 @@ def handle_message(event):
                 )
             notify_teacher(f"有使用者查詢了 {user_message} 服務。")
         elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
-            reply_content = create_ritual_prices_flex()
-            notify_teacher("有使用者查詢了法事項目與費用。")
-        elif user_message in ["匯款", "匯款資訊", "帳號"]:
-            payment_text = f"""【匯款資訊】
-🌟 匯款帳號：
-銀行代碼：{payment_details['bank_code']}
-銀行名稱：{payment_details['bank_name']}
-帳號：{payment_details['account_number']}
+            # 初始化使用者的法事選擇
+            user_ritual_selections[user_id] = []
+            reply_content = create_ritual_selection_flex()
+            notify_teacher("有使用者查詢了法事項目。")
+        elif user_message.startswith("選擇法事: "):
+            # 記錄使用者的法事選擇
+            selected_ritual = user_message.replace("選擇法事: ", "")
+            if user_id not in user_ritual_selections:
+                user_ritual_selections[user_id] = []
+            if selected_ritual not in user_ritual_selections[user_id]:
+                user_ritual_selections[user_id].append(selected_ritual)
+            reply_content = create_ritual_selection_flex()
+        elif user_message == "確認法事選擇":
+            reply_content = create_ritual_confirmation_flex(user_id)
+        elif user_message == "確認法事費用":
+            reply_content = create_payment_info_message()
+        elif user_message == "匯款完成":
+            selections = user_ritual_selections.get(user_id, [])
+            total_cost = 0
+            has_creditor = "冤親債主" in selections
+            has_peach = "補桃花" in selections
+            has_wealth = "補財庫" in selections
 
-（匯款後請告知末五碼以便核對）"""
-            reply_content = create_text_with_menu_button(payment_text, alt_text="匯款資訊")
+            if has_creditor and has_peach and has_wealth:
+                total_cost = ritual_prices_info["冤親債主/補桃花/補財庫"]["combo"]
+                selections = [s for s in selections if s not in ["冤親債主", "補桃花", "補財庫"]]
+                selections.append("冤親債主/補桃花/補財庫（三合一/一條龍）")
+            else:
+                for item in selections:
+                    if item in ritual_prices_info:
+                        total_cost += ritual_prices_info[item]["single"]
+
+            # 通知老師
+            message_to_teacher = f"使用者 {user_id} 已完成匯款：\n選擇項目：{', '.join(selections)}\n總費用：NT$ {total_cost}\n請等待使用者提供末五碼以核對。"
+            notify_teacher(message_to_teacher)
+
+            reply_content = create_text_with_menu_button(
+                "感謝您的匯款！請提供帳號末五碼以便核對。",
+                alt_text="匯款完成"
+            )
+
+            # 清除使用者的法事選擇
+            user_ritual_selections.pop(user_id, None)
+        elif user_message in ["匯款", "匯款資訊", "帳號"]:
+            reply_content = create_payment_info_message()
         elif user_message in ["IG"]:
             text_to_reply = other_services_keywords["IG"]
             reply_content = create_text_with_menu_button(text_to_reply, alt_text="IG")
