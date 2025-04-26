@@ -57,7 +57,9 @@ other_services_keywords = {
     "最新消息": "（此處可放置最新公告、活動資訊等）。",
     "課程": "我們提供命理與法術相關課程，（此處可放課程詳細介紹、開課時間、報名方式等）。\n詳情請洽詢...",
     "IG": f"追蹤我們的 Instagram：{ig_link}",
-    "抖音": "追蹤我們的抖音：[您的抖音連結]"
+    "抖音": "追蹤我們的抖音：[您的抖音連結]",
+    "煙供品": "煙供品介紹：（此處可放煙供品介紹或連結）。\n詳情請洽詢...",
+    "生基品": "生基品介紹：（此處可放生基品介紹或連結）。\n詳情請洽詢..."
 }
 
 # 法事價格
@@ -83,7 +85,11 @@ booking_submenu = {
     "問事": "請按照以下步驟提供您的資訊：\n1. 選擇您的 **國曆生日**。\n2. 選擇您的 **出生時辰**。",
     "法事": "請選擇您需要的法事項目，詳情可查看「法事項目與費用」。",
     "收驚": "收驚服務：請提供您的姓名與出生日期，我們將為您安排收驚儀式。",
-    "卜卦": "卜卦服務：請提供您想詢問的問題，我們將為您進行卜卦。"
+    "卜卦": "卜卦服務：請提供您想詢問的問題，我們將為您進行卜卦。",
+    "開運物": other_services_keywords["開運物"],
+    "煙供品": other_services_keywords["煙供品"],
+    "生基品": other_services_keywords["生基品"],
+    "課程": other_services_keywords["課程"]
 }
 
 # 時辰選項
@@ -262,6 +268,30 @@ def create_booking_submenu_flex():
                     height='sm'
                 ),
                 FlexButton(
+                    action=MessageAction(label='開運物', text='開運物'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='煙供品', text='煙供品'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='生基品', text='生基品'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='課程', text='課程'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
                     action=create_return_to_menu_button(),
                     style='link',
                     height='sm',
@@ -294,255 +324,4 @@ def notify_teacher(message_text):
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
             line_bot_api.push_message(
-                PushMessageRequest(
-                    to=teacher_user_id,
-                    messages=[TextMessage(text=message_text)]
-                )
-            )
-            logging.info(f"Notification sent to teacher: {teacher_user_id}")
-    except Exception as e:
-        logging.error(f"Error sending notification to teacher: {e}")
-
-# --- 每周運勢文群發 ---
-def send_weekly_fortune():
-    fortune_text = "【本週運勢文】\n（此處放置您的運勢文內容）。\n請關注我們的社群平台獲取更多資訊！"
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        for user_id in followed_users:
-            try:
-                line_bot_api.push_message(
-                    PushMessageRequest(
-                        to=user_id,
-                        messages=[TextMessage(text=fortune_text)]
-                    )
-                )
-                logging.info(f"Sent weekly fortune to user: {user_id}")
-            except Exception as e:
-                logging.error(f"Error sending weekly fortune to {user_id}: {e}")
-
-# --- Webhook 主要處理函式 ---
-@app.route("/callback", methods=['POST'])
-def callback():
-    if handler is None:
-        logging.error("Webhook handler is not initialized. Check LINE_CHANNEL_SECRET.")
-        abort(500)
-
-    signature = request.headers['X-Line-Signature']
-    body = request.get_data(as_text=True)
-    app.logger.info("Request body: " + body)
-
-    try:
-        handler.handle(body, signature)
-    except InvalidSignatureError:
-        logging.error("Invalid signature. Please check your channel access token/secret.")
-        abort(400)
-    except Exception as e:
-        logging.error(f"Error handling webhook: {e}")
-        abort(500)
-
-    return 'OK'
-
-# --- 處理訊息事件 ---
-@handler.add(MessageEvent, message=TextMessageContent)
-def handle_message(event):
-    user_message = event.message.text.strip()
-    user_id = event.source.user_id
-    reply_content = None
-
-    if not channel_access_token:
-        logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot reply.")
-        return
-
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-
-        if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
-            reply_content = create_main_services_flex()
-        elif user_message in ["如何預約", "預約", "預約諮詢", "命理問事", "算命"]:
-            reply_content = create_booking_submenu_flex()
-            notify_teacher("有使用者查詢了預約服務選項。")
-        elif user_message in booking_submenu:
-            # 如果選擇「問事」，顯示日期選擇器
-            if user_message == "問事":
-                reply_content = TemplateMessage(
-                    alt_text="請選擇您的生日",
-                    template=ButtonsTemplate(
-                        text=booking_submenu[user_message],
-                        actions=[
-                            DatetimePickerAction(
-                                label="選擇生日",
-                                data="action=select_birthday",
-                                mode="date",
-                                initial="1990-01-01",
-                                max="2025-12-31",
-                                min="1900-01-01"
-                            ),
-                            create_return_to_menu_button()
-                        ]
-                    )
-                )
-            else:
-                reply_content = create_text_with_menu_button(
-                    booking_submenu[user_message],
-                    alt_text=user_message
-                )
-            notify_teacher(f"有使用者查詢了 {user_message} 服務。")
-        elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
-            reply_content = create_ritual_prices_flex()
-        elif user_message in ["匯款", "匯款資訊", "帳號"]:
-            payment_text = f"""【匯款資訊】
-🌟 匯款帳號：
-銀行代碼：{payment_details['bank_code']}
-銀行名稱：{payment_details['bank_name']}
-帳號：{payment_details['account_number']}
-
-（匯款後請告知末五碼以便核對）"""
-            reply_content = create_text_with_menu_button(payment_text, alt_text="匯款資訊")
-        elif user_message in other_services_keywords:
-            text_to_reply = other_services_keywords[user_message]
-            reply_content = create_text_with_menu_button(text_to_reply, alt_text=user_message)
-        elif "你好" in user_message or "hi" in user_message.lower() or "hello" in user_message.lower():
-            hello_text = "您好！很高興為您服務。\n請問需要什麼協助？\n您可以輸入「服務項目」查看我們的服務選單。"
-            reply_content = create_text_with_menu_button(hello_text, alt_text="問候")
-        elif user_message.startswith("時辰: "):
-            # 使用者選擇了時辰
-            selected_time = user_message.replace("時辰: ", "")
-            birthday = user_birthday_data.get(user_id)
-
-            if birthday:
-                # 將生日和時辰傳送給老師
-                message_to_teacher = f"使用者 {user_id} 提交了命理問事資訊：\n生日：{birthday}\n時辰：{selected_time}"
-                notify_teacher(message_to_teacher)
-
-                # 回覆使用者
-                reply_content = create_text_with_menu_button(
-                    "您的資訊已提交給老師，老師會盡快回覆您！",
-                    alt_text="提交成功"
-                )
-
-                # 清除臨時儲存的生日資料
-                user_birthday_data.pop(user_id, None)
-
-        if reply_content:
-            try:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply_content]
-                    )
-                )
-            except Exception as e:
-                logging.error(f"Error sending reply message: {e}")
-
-# --- 處理 Postback 事件（日期選擇器回應） ---
-@handler.add(PostbackEvent)
-def handle_postback(event):
-    user_id = event.source.user_id
-    postback_data = event.postback.data
-    reply_content = None
-
-    if not channel_access_token:
-        logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot handle postback.")
-        return
-
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-
-        if postback_data == "action=select_birthday":
-            # 使用者選擇了生日，儲存生日並顯示時辰選擇
-            birthday = event.postback.params['date']
-            user_birthday_data[user_id] = birthday
-
-            # 顯示時辰選擇的 Quick Reply
-            quick_reply_items = [
-                QuickReplyItem(
-                    action=MessageAction(
-                        label=period["label"],
-                        text=f"時辰: {period['value']}"
-                    )
-                ) for period in time_periods
-            ]
-            quick_reply_items.append(
-                QuickReplyItem(
-                    action=create_return_to_menu_button()
-                )
-            )
-
-            reply_content = TextMessage(
-                text="請選擇您的出生時辰：\n2300-0059 子 | 0100-0259 丑\n0300-0459 寅 | 0500-0659 卯\n0700-0859 辰 | 0900-1059 巳\n1100-1259 午 | 1300-1459 未\n1500-1659 申 | 1700-1859 酉\n1900-2059 戌 | 2100-2259 亥",
-                quick_reply=QuickReply(items=quick_reply_items)
-            )
-
-        if reply_content:
-            try:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply_content]
-                    )
-                )
-            except Exception as e:
-                logging.error(f"Error sending reply message: {e}")
-
-# --- 處理加入好友事件 ---
-@handler.add(FollowEvent)
-def handle_follow(event):
-    user_id = event.source.user_id
-    followed_users.add(user_id)
-    logging.info(f"User {user_id} followed the bot.")
-    notify_teacher(f"有新使用者加入好友：{user_id}")
-
-    if not channel_access_token:
-        logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot send follow message.")
-        return
-
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-
-        welcome_text = """歡迎加入【宇宙玄天院】！
-
-宇宙玄天院｜開啟靈性覺醒的殿堂
-
-本院奉玄天上帝為主神，由雲真居士領導修持道脈，融合儒、釋、道三教之理與現代身心靈智慧，致力於指引眾生走上自性覺醒與命運轉化之路。
-
-您可以點擊下方按鈕查看詳細服務項目與資訊："""
-        welcome_message = TextMessage(text=welcome_text)
-        services_flex = create_main_services_flex()
-
-        try:
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[welcome_message, services_flex]
-                )
-            )
-            logging.info(f"Successfully sent welcome message to user {user_id}")
-        except Exception as e:
-            logging.error(f"Error sending follow message to user {user_id}: {e}")
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[TextMessage(text="歡迎加入宇宙玄天院！請輸入「服務項目」查看選單。")]
-                )
-            )
-
-# --- 主程式入口 ---
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    if not channel_access_token or not channel_secret:
-        logging.error("Missing required LINE environment variables (TOKEN or SECRET). Exiting.")
-        exit()
-    if not teacher_user_id:
-        logging.warning("TEACHER_USER_ID is not set. Notifications to teacher will not work.")
-
-    # 設定每周一發送運勢文的排程
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(
-        send_weekly_fortune,
-        CronTrigger(day_of_week='mon', hour=9, minute=0)  # 每周一上午9點
-    )
-    scheduler.start()
-
-    port = int(os.environ.get('PORT', 5000))
-    logging.info(f"Starting Flask server on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+                PushMessageRequest
