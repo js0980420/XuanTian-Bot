@@ -75,24 +75,12 @@ payment_details = {
     "account_number": "510540490990"
 }
 
-how_to_book_instructions = """【如何預約/命理問事須知】
-請按照以下步驟提供您的資訊：
-1. 點擊下方按鈕選擇您的 **國曆生日**。
-2. 之後選擇您的 **出生時辰**。
-
-時辰參考：
-2300-0059 子 | 0100-0259 丑
-0300-0459 寅 | 0500-0659 卯
-0700-0859 辰 | 0900-1059 巳
-1100-1259 午 | 1300-1459 未
-1500-1659 申 | 1700-1859 酉
-1900-2059 戌 | 2100-2259 亥
-
-您的資訊會直接轉發給老師，老師會盡快回覆您！"""
+how_to_book_instructions = """【如何預約】
+請選擇您需要的服務類型："""
 
 # 預約子選單項目
 booking_submenu = {
-    "問事": how_to_book_instructions,
+    "問事": "請按照以下步驟提供您的資訊：\n1. 選擇您的 **國曆生日**。\n2. 選擇您的 **出生時辰**。",
     "法事": "請選擇您需要的法事項目，詳情可查看「法事項目與費用」。",
     "收驚": "收驚服務：請提供您的姓名與出生日期，我們將為您安排收驚儀式。",
     "卜卦": "卜卦服務：請提供您想詢問的問題，我們將為您進行卜卦。"
@@ -370,7 +358,7 @@ def handle_message(event):
 
         if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
             reply_content = create_main_services_flex()
-        elif user_message in ["預約", "預約諮詢", "問事", "命理問事", "算命", "如何預約"]:
+        elif user_message in ["如何預約", "預約", "預約諮詢", "命理問事", "算命"]:
             reply_content = create_booking_submenu_flex()
             notify_teacher("有使用者查詢了預約服務選項。")
         elif user_message in booking_submenu:
@@ -379,7 +367,7 @@ def handle_message(event):
                 reply_content = TemplateMessage(
                     alt_text="請選擇您的生日",
                     template=ButtonsTemplate(
-                        text="請選擇您的國曆生日：",
+                        text=booking_submenu[user_message],
                         actions=[
                             DatetimePickerAction(
                                 label="選擇生日",
@@ -416,6 +404,24 @@ def handle_message(event):
         elif "你好" in user_message or "hi" in user_message.lower() or "hello" in user_message.lower():
             hello_text = "您好！很高興為您服務。\n請問需要什麼協助？\n您可以輸入「服務項目」查看我們的服務選單。"
             reply_content = create_text_with_menu_button(hello_text, alt_text="問候")
+        elif user_message.startswith("時辰: "):
+            # 使用者選擇了時辰
+            selected_time = user_message.replace("時辰: ", "")
+            birthday = user_birthday_data.get(user_id)
+
+            if birthday:
+                # 將生日和時辰傳送給老師
+                message_to_teacher = f"使用者 {user_id} 提交了命理問事資訊：\n生日：{birthday}\n時辰：{selected_time}"
+                notify_teacher(message_to_teacher)
+
+                # 回覆使用者
+                reply_content = create_text_with_menu_button(
+                    "您的資訊已提交給老師，老師會盡快回覆您！",
+                    alt_text="提交成功"
+                )
+
+                # 清除臨時儲存的生日資料
+                user_birthday_data.pop(user_id, None)
 
         if reply_content:
             try:
@@ -458,35 +464,14 @@ def handle_postback(event):
             ]
             quick_reply_items.append(
                 QuickReplyItem(
-                    action=MessageAction(
-                        label="返回主選單",
-                        text="服務項目"
-                    )
+                    action=create_return_to_menu_button()
                 )
             )
 
             reply_content = TextMessage(
-                text="請選擇您的出生時辰：",
+                text="請選擇您的出生時辰：\n2300-0059 子 | 0100-0259 丑\n0300-0459 寅 | 0500-0659 卯\n0700-0859 辰 | 0900-1059 巳\n1100-1259 午 | 1300-1459 未\n1500-1659 申 | 1700-1859 酉\n1900-2059 戌 | 2100-2259 亥",
                 quick_reply=QuickReply(items=quick_reply_items)
             )
-        elif postback_data.startswith("時辰: "):
-            # 使用者選擇了時辰
-            selected_time = postback_data.replace("時辰: ", "")
-            birthday = user_birthday_data.get(user_id)
-
-            if birthday:
-                # 將生日和時辰傳送給老師
-                message_to_teacher = f"使用者 {user_id} 提交了命理問事資訊：\n生日：{birthday}\n時辰：{selected_time}"
-                notify_teacher(message_to_teacher)
-
-                # 回覆使用者
-                reply_content = create_text_with_menu_button(
-                    "您的資訊已提交給老師，老師會盡快回覆您！",
-                    alt_text="提交成功"
-                )
-
-                # 清除臨時儲存的生日資料
-                user_birthday_data.pop(user_id, None)
 
         if reply_content:
             try:
