@@ -413,8 +413,8 @@ def setup_rich_menu():
                         "height": 843
                     },
                     "action": {
-                        "type": "uri",
-                        "uri": ig_link
+                        "type": "message",  # 改為 message 類型，因為回應需要返回主選單按鈕
+                        "text": "IG"
                     }
                 },
                 {
@@ -532,6 +532,7 @@ def handle_message(event):
             notify_teacher(f"有使用者查詢了 {user_message} 服務。")
         elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
             reply_content = create_ritual_prices_flex()
+            notify_teacher("有使用者查詢了法事項目與費用。")
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
             payment_text = f"""【匯款資訊】
 🌟 匯款帳號：
@@ -541,6 +542,14 @@ def handle_message(event):
 
 （匯款後請告知末五碼以便核對）"""
             reply_content = create_text_with_menu_button(payment_text, alt_text="匯款資訊")
+        elif user_message in ["IG"]:
+            text_to_reply = other_services_keywords["IG"]
+            reply_content = create_text_with_menu_button(text_to_reply, alt_text="IG")
+            notify_teacher("有使用者查詢了 Instagram 連結。")
+        elif user_message in ["開運物", "課程"]:
+            text_to_reply = other_services_keywords[user_message]
+            reply_content = create_text_with_menu_button(text_to_reply, alt_text=user_message)
+            notify_teacher(f"有使用者查詢了 {user_message}。")
         elif user_message in other_services_keywords:
             text_to_reply = other_services_keywords[user_message]
             reply_content = create_text_with_menu_button(text_to_reply, alt_text=user_message)
