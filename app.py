@@ -16,9 +16,10 @@ from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, ReplyMessageRequest,
     PushMessageRequest, TextMessage, FlexMessage, FlexContainer,
     FlexBubble, FlexBox, FlexText, FlexButton, FlexSeparator, FlexImage,
-    URIAction, MessageAction, TemplateMessage, ButtonsTemplate
+    URIAction, MessageAction, DatetimePickerAction, TemplateMessage, ButtonsTemplate,
+    QuickReply, QuickReplyItem
 )
-from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent
+from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent, PostbackEvent
 
 # --- 載入環境變數 ---
 load_dotenv()
@@ -59,8 +60,12 @@ other_services_keywords = {
     "抖音": "追蹤我們的抖音：[您的抖音連結]"
 }
 
+# 法事價格
 ritual_prices_info = {
     "冤親債主/補桃花/補財庫": {"single": 680, "combo": 1800},
+    "冤親債主": {"single": 680},
+    "補桃花": {"single": 680},
+    "補財庫": {"single": 680},
     "祖先": {"single": 1800}
 }
 
@@ -71,23 +76,19 @@ payment_details = {
 }
 
 how_to_book_instructions = """【如何預約/命理問事須知】
-請提供以下資訊：
-1.  **國曆生日** (年/月/日)
-2.  **出生時間** (24小時制，例如 晚上11:30 請輸入 2330 或 23:30，早上7點請輸入 0700 或 07:00)。
-    * 請直接告知出生時間數字，**無需自行換算時區或加減時間**。
-    * 時辰參考：
-        2300-0059 子 | 0100-0259 丑
-        0300-0459 寅 | 0500-0659 卯
-        0700-0859 辰 | 0900-1059 巳
-        1100-1259 午 | 1300-1459 未
-        1500-1659 申 | 1700-1859 酉
-        1900-2059 戌 | 2100-2259 亥
+請按照以下步驟提供您的資訊：
+1. 點擊下方按鈕選擇您的 **國曆生日**。
+2. 之後選擇您的 **出生時辰**。
 
-請將上述資訊，連同您想問的問題，一併發送給我們。
+時辰參考：
+2300-0059 子 | 0100-0259 丑
+0300-0459 寅 | 0500-0659 卯
+0700-0859 辰 | 0900-1059 巳
+1100-1259 午 | 1300-1459 未
+1500-1659 申 | 1700-1859 酉
+1900-2059 戌 | 2100-2259 亥
 
-【預約方式】
-（請在此處填寫您的主要預約方式，例如：請直接私訊留下您的問題與資料，我們會盡快回覆。）
-"""
+您的資訊會直接轉發給老師，老師會盡快回覆您！"""
 
 # 預約子選單項目
 booking_submenu = {
@@ -97,8 +98,27 @@ booking_submenu = {
     "卜卦": "卜卦服務：請提供您想詢問的問題，我們將為您進行卜卦。"
 }
 
+# 時辰選項
+time_periods = [
+    {"label": "子 (23:00-00:59)", "value": "子時 (23:00-00:59)"},
+    {"label": "丑 (01:00-02:59)", "value": "丑時 (01:00-02:59)"},
+    {"label": "寅 (03:00-04:59)", "value": "寅時 (03:00-04:59)"},
+    {"label": "卯 (05:00-06:59)", "value": "卯時 (05:00-06:59)"},
+    {"label": "辰 (07:00-08:59)", "value": "辰時 (07:00-08:59)"},
+    {"label": "巳 (09:00-10:59)", "value": "巳時 (09:00-10:59)"},
+    {"label": "午 (11:00-12:59)", "value": "午時 (11:00-12:59)"},
+    {"label": "未 (13:00-14:59)", "value": "未時 (13:00-14:59)"},
+    {"label": "申 (15:00-16:59)", "value": "申時 (15:00-16:59)"},
+    {"label": "酉 (17:00-18:59)", "value": "酉時 (17:00-18:59)"},
+    {"label": "戌 (19:00-20:59)", "value": "戌時 (19:00-20:59)"},
+    {"label": "亥 (21:00-22:59)", "value": "亥時 (21:00-22:59)"}
+]
+
 # 儲存所有加入好友的使用者 ID（模擬資料庫）
 followed_users = set()
+
+# 儲存使用者的生日（臨時儲存，等待時辰選擇）
+user_birthday_data = {}
 
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
@@ -178,6 +198,11 @@ def create_ritual_prices_flex():
     if "冤親債主/補桃花/補財庫" in ritual_prices_info and "combo" in ritual_prices_info["冤親債主/補桃花/補財庫"]:
         contents.append(FlexSeparator(margin='lg'))
         contents.append(FlexText(text='⚜️ 三合一/一條龍包含：冤親債主、補桃花、補財庫。', size='sm', color='#888888', wrap=True, margin='md'))
+        contents.append(FlexText(text='特別說明：', size='sm', color='#888888', wrap=True, margin='md'))
+        contents.append(FlexText(text='官司、考運、身體、小人 → 冤親債主', size='sm', color='#888888', wrap=True))
+        contents.append(FlexText(text='財運、事業、防破財 → 補財庫', size='sm', color='#888888', wrap=True))
+        contents.append(FlexText(text='感情、貴人、客戶、桃花 → 補桃花', size='sm', color='#888888', wrap=True))
+        contents.append(FlexText(text='若有特殊需求，請私訊老師！', size='sm', color='#888888', wrap=True))
 
     contents.append(FlexSeparator(margin='xl'))
     footer_buttons = [
@@ -190,7 +215,7 @@ def create_ritual_prices_flex():
         ),
         FlexSeparator(margin='md'),
         FlexButton(
-            action=create_return_to_menu_button().as_dict(),
+            action=create_return_to_menu_button(),
             style='link',
             height='sm',
             color='#555555'
@@ -249,7 +274,7 @@ def create_booking_submenu_flex():
                     height='sm'
                 ),
                 FlexButton(
-                    action=create_return_to_menu_button().as_dict(),
+                    action=create_return_to_menu_button(),
                     style='link',
                     height='sm',
                     color='#555555'
@@ -321,11 +346,10 @@ def callback():
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        print("Invalid signature. Please check your channel access token/secret.")
+        logging.error("Invalid signature. Please check your channel access token/secret.")
         abort(400)
     except Exception as e:
-        print(f"Error handling webhook: {e}")
-        logging.exception("Error handling webhook:")
+        logging.error(f"Error handling webhook: {e}")
         abort(500)
 
     return 'OK'
@@ -350,10 +374,30 @@ def handle_message(event):
             reply_content = create_booking_submenu_flex()
             notify_teacher("有使用者查詢了預約服務選項。")
         elif user_message in booking_submenu:
-            reply_content = create_text_with_menu_button(
-                booking_submenu[user_message],
-                alt_text=user_message
-            )
+            # 如果選擇「問事」，顯示日期選擇器
+            if user_message == "問事":
+                reply_content = TemplateMessage(
+                    alt_text="請選擇您的生日",
+                    template=ButtonsTemplate(
+                        text="請選擇您的國曆生日：",
+                        actions=[
+                            DatetimePickerAction(
+                                label="選擇生日",
+                                data="action=select_birthday",
+                                mode="date",
+                                initial="1990-01-01",
+                                max="2025-12-31",
+                                min="1900-01-01"
+                            ),
+                            create_return_to_menu_button()
+                        ]
+                    )
+                )
+            else:
+                reply_content = create_text_with_menu_button(
+                    booking_submenu[user_message],
+                    alt_text=user_message
+                )
             notify_teacher(f"有使用者查詢了 {user_message} 服務。")
         elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
             reply_content = create_ritual_prices_flex()
@@ -372,6 +416,77 @@ def handle_message(event):
         elif "你好" in user_message or "hi" in user_message.lower() or "hello" in user_message.lower():
             hello_text = "您好！很高興為您服務。\n請問需要什麼協助？\n您可以輸入「服務項目」查看我們的服務選單。"
             reply_content = create_text_with_menu_button(hello_text, alt_text="問候")
+
+        if reply_content:
+            try:
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[reply_content]
+                    )
+                )
+            except Exception as e:
+                logging.error(f"Error sending reply message: {e}")
+
+# --- 處理 Postback 事件（日期選擇器回應） ---
+@handler.add(PostbackEvent)
+def handle_postback(event):
+    user_id = event.source.user_id
+    postback_data = event.postback.data
+    reply_content = None
+
+    if not channel_access_token:
+        logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot handle postback.")
+        return
+
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+
+        if postback_data == "action=select_birthday":
+            # 使用者選擇了生日，儲存生日並顯示時辰選擇
+            birthday = event.postback.params['date']
+            user_birthday_data[user_id] = birthday
+
+            # 顯示時辰選擇的 Quick Reply
+            quick_reply_items = [
+                QuickReplyItem(
+                    action=MessageAction(
+                        label=period["label"],
+                        text=f"時辰: {period['value']}"
+                    )
+                ) for period in time_periods
+            ]
+            quick_reply_items.append(
+                QuickReplyItem(
+                    action=MessageAction(
+                        label="返回主選單",
+                        text="服務項目"
+                    )
+                )
+            )
+
+            reply_content = TextMessage(
+                text="請選擇您的出生時辰：",
+                quick_reply=QuickReply(items=quick_reply_items)
+            )
+        elif postback_data.startswith("時辰: "):
+            # 使用者選擇了時辰
+            selected_time = postback_data.replace("時辰: ", "")
+            birthday = user_birthday_data.get(user_id)
+
+            if birthday:
+                # 將生日和時辰傳送給老師
+                message_to_teacher = f"使用者 {user_id} 提交了命理問事資訊：\n生日：{birthday}\n時辰：{selected_time}"
+                notify_teacher(message_to_teacher)
+
+                # 回覆使用者
+                reply_content = create_text_with_menu_button(
+                    "您的資訊已提交給老師，老師會盡快回覆您！",
+                    alt_text="提交成功"
+                )
+
+                # 清除臨時儲存的生日資料
+                user_birthday_data.pop(user_id, None)
 
         if reply_content:
             try:
