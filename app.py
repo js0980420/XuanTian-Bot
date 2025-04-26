@@ -179,43 +179,52 @@ def create_ritual_selection_flex(user_id):
     # 獲取當前使用者的選擇
     selections = user_ritual_selections.get(user_id, [])
     
-    # 顯示所有選項，並根據是否選擇來改變按鈕樣式（模擬反白）
-    footer_buttons = [
-        FlexButton(
-            action=MessageAction(label='三合一/一條龍（冤親債主+補桃花+補財庫）', text='選擇法事: 三合一/一條龍（冤親債主+補桃花+補財庫）'),
-            style='primary' if '三合一/一條龍（冤親債主+補桃花+補財庫）' in selections else 'secondary',
-            color='#8C6F4E' if '三合一/一條龍（冤親債主+補桃花+補財庫）' in selections else '#EFEBE4',
-            height='sm'
-        ),
-        FlexButton(
-            action=MessageAction(label='冤親債主', text='選擇法事: 冤親債主'),
-            style='primary' if '冤親債主' in selections else 'secondary',
-            color='#8C6F4E' if '冤親債主' in selections else '#EFEBE4',
-            height='sm'
-        ),
-        FlexButton(
-            action=MessageAction(label='補桃花', text='選擇法事: 補桃花'),
-            style='primary' if '補桃花' in selections else 'secondary',
-            color='#8C6F4E' if '補桃花' in selections else '#EFEBE4',
-            height='sm'
-        ),
-        FlexButton(
-            action=MessageAction(label='補財庫', text='選擇法事: 補財庫'),
-            style='primary' if '補財庫' in selections else 'secondary',
-            color='#8C6F4E' if '補財庫' in selections else '#EFEBE4',
-            height='sm'
-        ),
-        FlexButton(
-            action=MessageAction(label='祖先', text='選擇法事: 祖先'),
-            style='primary' if '祖先' in selections else 'secondary',
-            color='#8C6F4E' if '祖先' in selections else '#EFEBE4',
-            height='sm'
-        ),
+    # 定義所有選項
+    ritual_options = [
+        {"label": "三合一/一條龍（冤親債主+補桃花+補財庫）", "price": 1800},
+        {"label": "冤親債主", "price": 680},
+        {"label": "補桃花", "price": 680},
+        {"label": "補財庫", "price": 680},
+        {"label": "祖先", "price": 1800}
+    ]
+
+    # 顯示選項說明
+    body_contents = [
+        FlexText(text='請選擇您需要的法事項目：', wrap=True, size='sm', color='#333333'),
+        FlexSeparator(margin='md'),
+    ]
+    for option in ritual_options:
+        body_contents.append(
+            FlexText(
+                text=f'• {option["label"]}：NT$ {option["price"]}',
+                wrap=True,
+                size='sm',
+                margin='sm'
+            )
+        )
+    body_contents.extend([
+        FlexSeparator(margin='lg'),
+        FlexText(text='點擊下方按鈕選擇項目，已選擇的項目會反白。選擇完後請點擊「完成選擇」。', size='xs', color='#888888', wrap=True)
+    ])
+
+    # 創建選項按鈕，根據是否選擇來改變樣式（模擬反白）
+    footer_buttons = []
+    for option in ritual_options:
+        footer_buttons.append(
+            FlexButton(
+                action=MessageAction(label=option["label"], text=f'選擇法事: {option["label"]}'),
+                style='primary' if option["label"] in selections else 'secondary',
+                color='#8C6F4E' if option["label"] in selections else '#EFEBE4',
+                height='sm'
+            )
+        )
+    footer_buttons.extend([
         FlexButton(
             action=MessageAction(label='完成選擇', text='完成法事選擇'),
             style='primary',
             color='#8C6F4E',
-            height='sm'
+            height='sm',
+            margin='md'
         ),
         FlexButton(
             action=create_return_to_menu_button(),
@@ -223,7 +232,7 @@ def create_ritual_selection_flex(user_id):
             height='sm',
             color='#555555'
         ),
-    ]
+    ])
 
     bubble = FlexBubble(
         header=FlexBox(
@@ -235,17 +244,7 @@ def create_ritual_selection_flex(user_id):
         body=FlexBox(
             layout='vertical',
             spacing='md',
-            contents=[
-                FlexText(text='請選擇您需要的法事項目：', wrap=True, size='sm', color='#333333'),
-                FlexSeparator(margin='md'),
-                FlexText(text='• 三合一/一條龍（冤親債主+補桃花+補財庫）：NT$ 1800', wrap=True, size='sm', margin='sm'),
-                FlexText(text='• 冤親債主：NT$ 680', wrap=True, size='sm', margin='sm'),
-                FlexText(text='• 補桃花：NT$ 680', wrap=True, size='sm', margin='sm'),
-                FlexText(text='• 補財庫：NT$ 680', wrap=True, size='sm', margin='sm'),
-                FlexText(text='• 祖先：NT$ 1800', wrap=True, size='sm', margin='sm'),
-                FlexSeparator(margin='lg'),
-                FlexText(text='選擇後點擊「完成選擇」以確認費用。', size='xs', color='#888888', wrap=True)
-            ]
+            contents=body_contents
         ),
         footer=FlexBox(
             layout='vertical',
