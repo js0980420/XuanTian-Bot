@@ -282,7 +282,7 @@ def notify_teacher(message_text):
 @app.route("/callback", methods=['POST'])
 def callback():
     # 檢查 handler 是否成功初始化
-    if ler is None:
+    if handler is None:
         logging.error("Webhook ler is not initialized. Check LINE_CHANNEL_SECRET.")
         abort(500) # 內部伺服器錯誤
 
