@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 # 倉庫信息配置
 # 請修改以下變量為您的實際值
-GITHUB_REPO_URL = "https://github.com/你的用戶名/你的倉庫名.git"  # 替換為您的GitHub倉庫URL
+GITHUB_REPO_URL = "https://github.com/js0980420/XuanTian-line-bot.git"  # 替換為您的GitHub倉庫URL
 BRANCH_NAME = "main"  # 替換為您要推送的分支名稱
-RENDER_DEPLOY_HOOK = None  # 如果有Render的Deploy Hook URL，可以在這里設置
+RENDER_DEPLOY_HOOK = "https://api.render.com/deploy/srv-cvurjkidbo4c73f6ln8g?key=QrrjwRCjC2w"  # 如果有Render的Deploy Hook URL，可以在這里設置
 
 def run_command(command, cwd=None):
     """執行shell命令並返回結果"""
