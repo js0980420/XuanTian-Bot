@@ -38,7 +38,7 @@ from google.oauth2 import service_account
 import pytz
 
 # --- 加入版本標記 ---
-BOT_VERSION = "v1.13.3" # Increment version for callback typo fix
+BOT_VERSION = "v1.13.4" # Increment version for ritual selection UI fix
 print(f"運行版本：{BOT_VERSION}")
 
 app = Flask(__name__)
@@ -270,8 +270,9 @@ def handle_text_message(event):
 @handler.add(PostbackEvent)
 def handle_postback(event):
     """處理 Postback 事件 (預約流程 + 生日收集 + 資訊顯示 + 返回)"""
-    # ... (程式碼與 v1.12.0 相同，處理按鈕點擊) ...
-    reply_message = None; follow_up_message = None; user_id = event.source.user_id
+    reply_message = None
+    follow_up_message = None
+    user_id = event.source.user_id
     app.logger.info(f"Received Postback from {user_id}")
     try:
         postback_data_str = event.postback.data; app.logger.info(f"Postback data string: '{postback_data_str}'")
@@ -310,13 +311,18 @@ def handle_postback(event):
                     current_selection = user_states[user_id]["data"]["selected_rituals"]
                     if selected_ritual in current_selection: current_selection.remove(selected_ritual); app.logger.info(f"Removed '{selected_ritual}' from selection for {user_id}")
                     else: current_selection.append(selected_ritual); app.logger.info(f"Added '{selected_ritual}' to selection for {user_id}")
+                # *** 修改處：只發送更新後的選單 ***
                 reply_message = create_ritual_selection_message(user_id)
             else: app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}"); reply_message = TextMessage(text="發生錯誤..."); follow_up_message = create_main_menu_message()
         elif action == 'confirm_rituals':
              if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
                  selected_rituals = user_states[user_id].get("data", {}).get("selected_rituals", [])
                  app.logger.info(f"User {user_id} confirmed rituals: {selected_rituals}")
-                 if not selected_rituals: alert_text = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成。"); selection_menu = create_ritual_selection_message(user_id); reply_message = [alert_text, selection_menu]
+                 if not selected_rituals:
+                      # *** 修改處：將提示和選單放入列表 ***
+                      alert_text = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成。")
+                      selection_menu = create_ritual_selection_message(user_id)
+                      reply_message = [alert_text, selection_menu]
                  else: total_price, final_item_list = calculate_total_price(selected_rituals); handle_booking_request(user_id, final_item_list, total_price); del user_states[user_id]
              else: app.logger.warning(f"User {user_id} clicked confirm_rituals but not in correct state."); reply_message = create_main_menu_message()
         elif action == 'collect_birth_info':
