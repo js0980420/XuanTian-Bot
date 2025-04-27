@@ -702,7 +702,15 @@ def handle_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
 
-        if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
+        # 检查是否是法事相关关键词
+        if user_message in ["法事", "預約法事", "法會", "解冤親", "補財庫", "補桃花"]:
+            # 直接进入法事流程
+            user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
+            logging.info(f"用户 {user_id} 输入法事关键词：{user_message}，直接进入法事选择")
+            reply_content = create_ritual_selection_message(user_id)
+            notify_teacher("有使用者查詢了法事項目。")
+            
+        elif user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
             reply_content = create_main_services_flex()
         elif user_message in ["如何預約", "預約", "預約諮詢", "命理問事", "算命"]:
             reply_content = create_booking_submenu_flex()
@@ -733,16 +741,6 @@ def handle_message(event):
                     alt_text=user_message
                 )
             notify_teacher(f"有使用者查詢了 {user_message} 服務。")
-        elif user_message in ["法事"]:
-            # 初始化使用者的法事選擇
-            user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
-            logging.info(f"初始化用户法事选择状态: {user_states[user_id]}")
-            
-            # 创建法事选择Flex消息
-            reply_content = create_ritual_selection_message(user_id)
-            logging.info(f"生成法事选择Flex Message")
-            notify_teacher("有使用者查詢了法事項目。")
-            
         elif user_message.startswith("選擇法事: "):
             # 記錄使用者的法事選擇
             selected_ritual = user_message.replace("選擇法事: ", "")
