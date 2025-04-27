@@ -751,12 +751,16 @@ def handle_message(event):
                 user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
                 logging.info(f"初始化用户状态: {user_states[user_id]}")
             
-            # 添加选择（不做移除操作，仅添加）
-            if selected_ritual not in user_states[user_id]["data"]["selected_rituals"]:
-                user_states[user_id]["data"]["selected_rituals"].append(selected_ritual)
-                logging.info(f"添加选择: {selected_ritual}")
+            # 切换选择状态：如果已选择则移除，如果未选择则添加
+            current_selection = user_states[user_id]["data"]["selected_rituals"]
+            if selected_ritual in current_selection:
+                current_selection.remove(selected_ritual)
+                logging.info(f"从选择中移除: {selected_ritual}")
+            else:
+                current_selection.append(selected_ritual)
+                logging.info(f"添加到选择: {selected_ritual}")
             
-            # 返回当前选择状态和更新的Flex消息
+            # 只发送更新后的法事选择界面，不发送文本回复
             reply_content = create_ritual_selection_message(user_id)
             
         elif user_message == "完成法事選擇" or user_message == "完成選擇":
@@ -900,50 +904,34 @@ def handle_postback(event):
                 reply_content = create_ritual_selection_message(user_id) # 顯示法事選擇畫面
             # ... (其他服務的處理)
 
-        # --- 處理選擇具體法事項目 (加入/移除選擇) ---
+        # *** 修改处：处理选择具体法事项目后 (加入/移除选择) ***
         elif action == 'select_ritual_item':
             selected_ritual = postback_data.get('ritual')
             if selected_ritual:
-                logging.info(f"用户 {user_id} 选择法事项目: {selected_ritual}")
-                
-                # 确保用户状态存在
+                app.logger.info(f"User {user_id} selected ritual item: {selected_ritual}")
+                # 更新用户状态中的已选列表
                 if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals":
-                    logging.warning(f"用户 {user_id} 状态不正确，重置状态")
+                    # 如果状态不对，重新开始选择
                     user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [selected_ritual]}}
-                    logging.info(f"已重置用户状态: {user_states[user_id]}")
+                    app.logger.warning(f"User {user_id} was not in selecting_rituals state, resetting.")
                 else:
+                    # 切换选择状态：如果已经选择了，就移除；如果未选择，就添加
                     current_selection = user_states[user_id]["data"]["selected_rituals"]
-                    # 切換選擇狀態
                     if selected_ritual in current_selection:
                         current_selection.remove(selected_ritual)
-                        logging.info(f"从选择中移除: {selected_ritual}")
+                        app.logger.info(f"Removed '{selected_ritual}' from selection for {user_id}")
                     else:
                         current_selection.append(selected_ritual)
-                        logging.info(f"添加到选择: {selected_ritual}")
-                    
-                    logging.info(f"更新后的用户选择: {current_selection}")
+                        app.logger.info(f"Added '{selected_ritual}' to selection for {user_id}")
                 
-                # 重新显示选择画面并确保发送
-                try:
-                    reply_content = create_ritual_selection_message(user_id)
-                    logging.info(f"生成新的法事选择消息")
-                    
-                    # 确保回复消息被发送
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=[reply_content]
-                        )
-                    )
-                    logging.info("成功发送法事选择响应")
-                    
-                    # 提前返回以避免重复发送
-                    return
-                except Exception as e:
-                    logging.error(f"发送法事选择响应失败: {e}")
+                # 更新法事选择界面，但不发送简短回复
+                selection_menu = create_ritual_selection_message(user_id)
+                reply_message = selection_menu  # 只发送更新后的选择界面
             else:
-                logging.error(f"选择法事项目但未接收到ritual参数: {postback_data}")
-                
+                app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}")
+                reply_message = TextMessage(text="發生錯誤，無法識別您選擇的法事項目。")
+                follow_up_message = create_main_menu_message()
+
         # --- 處理完成法事選擇 ---
         elif action == 'confirm_rituals':
             if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
