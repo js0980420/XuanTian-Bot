@@ -17,7 +17,7 @@ from linebot.v3.messaging import (
     PushMessageRequest, TextMessage, FlexMessage, FlexContainer,
     FlexBubble, FlexBox, FlexText, FlexButton, FlexSeparator, FlexImage,
     URIAction, MessageAction, DatetimePickerAction, TemplateMessage, ButtonsTemplate,
-    QuickReply, QuickReplyItem
+    QuickReply, QuickReplyItem, PostbackAction
 )
 from linebot.v3.webhooks import MessageEvent, TextMessageContent, FollowEvent, PostbackEvent
 
@@ -62,14 +62,19 @@ other_services_keywords = {
     "生基品": "生基品介紹：（此處可放生基品介紹或連結）。\n詳情請洽詢..."
 }
 
-# 法事價格
-ritual_prices_info = {
-    "三合一/一條龍（冤親債主+補桃花+補財庫）": {"price": 1800},
-    "冤親債主": {"price": 680},
-    "補桃花": {"price": 680},
-    "補財庫": {"price": 680},
-    "祖先": {"price": 1800}
+# --- 服務費用設定 (更新版) ---
+SERVICE_FEES = {
+    "冤親債主 (個人)": 680, "補桃花 (個人)": 680, "補財庫 (個人)": 680,
+    "三合一 (個人)": 1800, # 冤親+桃花+財庫 (個人)
+    "冤親債主 (祖先)": 1800, "補桃花 (祖先)": 1800, "補財庫 (祖先)": 1800,
+    "三合一 (祖先)": 5400, # 假設 1800 * 3
+    # 其他服務...
 }
+# 定義三合一組合內容，用於計算優惠
+PERSONAL_BUNDLE_ITEMS = {"冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)"}
+ANCESTOR_BUNDLE_ITEMS = {"冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)"}
+PERSONAL_BUNDLE_NAME = "三合一 (個人)"
+ANCESTOR_BUNDLE_NAME = "三合一 (祖先)"
 
 payment_details = {
     "bank_code": "822",
@@ -108,14 +113,15 @@ time_periods = [
     {"label": "亥 (21:00-22:59)", "value": "亥時 (21:00-22:59)"}
 ]
 
+# --- 狀態管理 ---
 # 儲存所有加入好友的使用者 ID（模擬資料庫）
 followed_users = set()
 
 # 儲存使用者的生日（臨時儲存，等待時辰選擇）
 user_birthday_data = {}
 
-# 儲存使用者的法事選擇（臨時儲存，等待確認）
-user_ritual_selections = {}
+# 統一使用 user_states 進行狀態管理 (替代 user_ritual_selections)
+user_states = {}
 
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
@@ -175,120 +181,95 @@ def create_main_services_flex():
     )
     return FlexMessage(alt_text='主要服務項目', contents=bubble)
 
-def create_ritual_selection_template(user_id):
-    # 獲取當前使用者的選擇
-    selections = user_ritual_selections.get(user_id, [])
-    
-    # 定義所有選項
-    ritual_options = [
-        {"label": "三合一/一條龍", "full_label": "三合一/一條龍（冤親債主+補桃花+補財庫）", "price": 1800},
-        {"label": "冤親債主", "full_label": "冤親債主", "price": 680},
-        {"label": "補桃花", "full_label": "補桃花", "price": 680},
-        {"label": "補財庫", "full_label": "補財庫", "price": 680},
-        {"label": "祖先", "full_label": "祖先", "price": 1800}
+# --- 輔助函數：建立法事選擇 Flex Message ---
+def create_ritual_selection_message(user_id):
+    """建立法事項目選擇的 Flex Message"""
+    buttons = []
+    ritual_items = [
+        "冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)", "三合一 (個人)",
+        "冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)", "三合一 (祖先)"
     ]
+    # 獲取用戶當前已選項目
+    current_selection = []
+    if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
+        current_selection = user_states[user_id]["data"].get("selected_rituals", [])
 
-    # 顯示已選擇的項目
-    selected_text = "已選擇：" + (", ".join(selections) if selections else "無")
-    
-    # 第一個訊息：選項按鈕（最多 4 個按鈕）
-    actions = []
-    for i in range(min(4, len(ritual_options))):
-        option = ritual_options[i]
-        label = f"{'✅ ' if option['full_label'] in selections else ''}{option['label']}"
-        actions.append(MessageAction(label=label, text=f"選擇法事: {option['full_label']}"))
-    
-    first_message = TemplateMessage(
-        alt_text="法事項目選擇",
-        template=ButtonsTemplate(
-            text=f"請選擇您需要的法事項目：\n• 三合一/一條龍（冤親債主+補桃花+補財庫）：NT$ 1800\n• 冤親債主：NT$ 680\n• 補桃花：NT$ 680\n• 補財庫：NT$ 680\n• 祖先：NT$ 1800\n\n{selected_text}",
-            actions=actions
-        )
-    )
+    # 建立項目按鈕
+    for item in ritual_items:
+        price = SERVICE_FEES.get(item, "洽詢")
+        label_with_price = f"{item} (NT${price})" if isinstance(price, int) else f"{item} ({price})"
+        is_selected = item in current_selection
+        button_label = f"✅ {label_with_price}" if is_selected else label_with_price
+        button_style = 'secondary' if is_selected else 'primary'
 
-    # 第二個訊息：剩餘選項 + 完成選擇 + 返回主選單
-    remaining_actions = []
-    for i in range(4, len(ritual_options)):
-        option = ritual_options[i]
-        label = f"{'✅ ' if option['full_label'] in selections else ''}{option['label']}"
-        remaining_actions.append(MessageAction(label=label, text=f"選擇法事: {option['full_label']}"))
-    
-    remaining_actions.extend([
-        MessageAction(label="完成選擇", text="完成法事選擇"),
-        create_return_to_menu_button()
-    ])
+        ritual_postback_data = json.dumps({"action": "select_ritual_item", "ritual": item})
+        if len(ritual_postback_data.encode('utf-8')) <= 300:
+            buttons.append(FlexButton(
+                action=PostbackAction(
+                    label=button_label, 
+                    data=ritual_postback_data, 
+                    display_text=f"選擇法事：{item}"
+                ), 
+                style=button_style, 
+                color='#A67B5B' if not is_selected else '#DDDDDD', 
+                margin='sm', 
+                height='sm'
+            ))
+        else:
+            logging.warning(f"Postback data too large for ritual: {item}")
 
-    second_message = TemplateMessage(
-        alt_text="法事項目選擇（續）",
-        template=ButtonsTemplate(
-            text="請繼續選擇或完成：",
-            actions=remaining_actions
-        )
-    )
-
-    return [first_message, second_message]
-
-def create_ritual_confirmation_flex(user_id):
-    selections = user_ritual_selections.get(user_id, [])
-    if not selections:
-        return create_text_with_menu_button("您尚未選擇任何法事項目。", alt_text="無選擇")
-
-    # 檢查是否選擇了「三合一/一條龍」與其他衝突項目
-    if "三合一/一條龍（冤親債主+補桃花+補財庫）" in selections:
-        selections = [s for s in selections if s not in ["冤親債主", "補桃花", "補財庫"]]
-
-    # 計算費用
-    total_cost = 0
-    for item in selections:
-        if item in ritual_prices_info:
-            total_cost += ritual_prices_info[item]["price"]
-
-    # 顯示選擇與總費用
-    contents = [
-        FlexText(text='您的法事選擇', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
-    ]
-    for item in selections:
-        price = ritual_prices_info[item]["price"]
-        contents.extend([
-            FlexSeparator(margin='lg'),
-            FlexText(text=item, weight='bold', size='md', margin='md'),
-            FlexText(text=f"NT$ {price}", size='sm', color='#555555', wrap=True)
-        ])
-
-    contents.extend([
-        FlexSeparator(margin='lg'),
-        FlexText(text=f'總費用：NT$ {total_cost}', weight='bold', size='lg', color='#8C6F4E', margin='md'),
-        FlexText(text='請確認您的選擇，確認後將提供匯款資訊。', size='sm', color='#888888', wrap=True)
-    ])
-
-    footer_buttons = [
-        FlexButton(
-            action=MessageAction(label='確認無誤', text='確認法事費用'),
-            style='primary',
-            color='#8C6F4E',
-            height='sm',
-            margin='md'
-        ),
-        FlexButton(
-            action=MessageAction(label='重新選擇', text='法事'),
-            style='secondary',
-            color='#EFEBE4',
+    # 建立完成選擇按鈕
+    confirm_data = json.dumps({"action": "confirm_rituals"})
+    if len(confirm_data.encode('utf-8')) <= 300:
+        buttons.append(FlexButton(
+            action=PostbackAction(
+                label='完成選擇，計算總價', 
+                data=confirm_data, 
+                display_text='完成法事選擇'
+            ), 
+            style='primary', 
+            color='#4CAF50', 
+            margin='lg', 
             height='sm'
-        ),
-        FlexButton(
-            action=create_return_to_menu_button(),
-            style='link',
-            height='sm',
-            color='#555555'
-        )
-    ]
+        ))
+    else:
+        logging.warning("Confirm button postback data too large")
+
+    # 建立返回按鈕
+    back_button_data = json.dumps({"action": "show_main_menu"})
+    if len(back_button_data.encode('utf-8')) <= 300:
+         buttons.append(FlexButton(
+             action=PostbackAction(
+                 label='返回主選單', 
+                 data=back_button_data, 
+                 display_text='返回'
+             ), 
+             style='secondary', 
+             height='sm', 
+             margin='md'
+         ))
+    else:
+        logging.warning("Back button postback data too large")
+
+    # 顯示已選項目
+    selected_text = "您目前已選擇：\n" + "\n".join(f"- {r}" for r in current_selection) if current_selection else "請點擊下方按鈕選擇法事項目："
 
     bubble = FlexBubble(
-        body=FlexBox(layout='vertical', contents=contents),
-        footer=FlexBox(layout='vertical', spacing='sm', contents=footer_buttons),
-        styles={'body': {'backgroundColor': '#F9F9F9'}, 'footer': {'separator': True}}
+        header=FlexBox(
+            layout='vertical', 
+            contents=[FlexText(text='預約法事', weight='bold', size='lg', align='center', color='#B28E49')]
+        ),
+        body=FlexBox(
+            layout='vertical', 
+            spacing='md', 
+            contents=[
+                FlexText(text=selected_text, wrap=True, size='sm', margin='md'),
+                FlexSeparator(margin='lg'),
+                *buttons # 將按鈕列表展開
+            ]
+        )
     )
-    return FlexMessage(alt_text='法事選擇確認', contents=bubble)
+    return FlexMessage(alt_text='請選擇法事項目', contents=bubble)
 
 def create_payment_info_message():
     payment_text = f"""【匯款資訊】
@@ -549,6 +530,136 @@ def setup_rich_menu():
         except Exception as e:
             logging.error(f"Error setting up rich menu: {e}")
 
+# --- 輔助函數：發送訊息 ---
+def send_message(user_id, message, reply_token=None):
+    """統一的訊息發送函數，支援回覆和推送"""
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        try:
+            if reply_token:
+                # 使用回覆 token 回覆訊息
+                if isinstance(message, list):
+                    line_bot_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=message))
+                else:
+                    line_bot_api.reply_message(ReplyMessageRequest(reply_token=reply_token, messages=[message]))
+            else:
+                # 直接推送訊息給指定用戶
+                if isinstance(message, list):
+                    for msg in message:
+                        line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[msg]))
+                else:
+                    line_bot_api.push_message(PushMessageRequest(to=user_id, messages=[message]))
+            return True
+        except Exception as e:
+            logging.error(f"Error in send_message: {e}")
+            return False
+
+# --- 輔助函數：建立主選單訊息 ---
+def create_main_menu_message():
+    """建立主選單訊息"""
+    return create_main_services_flex()
+
+# --- 輔助函數：計算總價 (處理三合一) ---
+def calculate_total_price(selected_items):
+    """計算選擇的法事項目總價，處理三合一優惠"""
+    total_price = 0
+    current_selection_set = set(selected_items)
+    final_items_to_display = [] # 最終顯示給用戶的項目列表
+
+    # 優先處理組合優惠
+    personal_bundle_applied = False
+    if PERSONAL_BUNDLE_ITEMS.issubset(current_selection_set):
+        logging.info("Applying personal bundle discount.")
+        total_price += SERVICE_FEES.get(PERSONAL_BUNDLE_NAME, 0)
+        final_items_to_display.append(PERSONAL_BUNDLE_NAME)
+        current_selection_set -= PERSONAL_BUNDLE_ITEMS # 從待計算集合中移除
+        personal_bundle_applied = True
+
+    ancestor_bundle_applied = False
+    if ANCESTOR_BUNDLE_ITEMS.issubset(current_selection_set):
+        logging.info("Applying ancestor bundle discount.")
+        total_price += SERVICE_FEES.get(ANCESTOR_BUNDLE_NAME, 0)
+        final_items_to_display.append(ANCESTOR_BUNDLE_NAME)
+        current_selection_set -= ANCESTOR_BUNDLE_ITEMS # 從待計算集合中移除
+        ancestor_bundle_applied = True
+
+    # 檢查是否單獨選了三合一
+    if PERSONAL_BUNDLE_NAME in current_selection_set and not personal_bundle_applied:
+        logging.info("Adding individual personal bundle price.")
+        total_price += SERVICE_FEES.get(PERSONAL_BUNDLE_NAME, 0)
+        final_items_to_display.append(PERSONAL_BUNDLE_NAME)
+        current_selection_set.discard(PERSONAL_BUNDLE_NAME)
+
+    if ANCESTOR_BUNDLE_NAME in current_selection_set and not ancestor_bundle_applied:
+        logging.info("Adding individual ancestor bundle price.")
+        total_price += SERVICE_FEES.get(ANCESTOR_BUNDLE_NAME, 0)
+        final_items_to_display.append(ANCESTOR_BUNDLE_NAME)
+        current_selection_set.discard(ANCESTOR_BUNDLE_NAME)
+
+    # 計算剩餘單項價格
+    for item in current_selection_set:
+        price = SERVICE_FEES.get(item)
+        if isinstance(price, int):
+            total_price += price
+            final_items_to_display.append(item) # 加入單項到顯示列表
+        else:
+            logging.warning(f"Price not found for item: {item}")
+            final_items_to_display.append(f"{item} (價格未知)")
+
+    logging.info(f"Calculated total price: {total_price} for display items: {final_items_to_display}")
+    return total_price, final_items_to_display
+
+# --- 輔助函數：處理預約請求 (記錄/通知 + 回覆客戶) ---
+def handle_booking_request(user_id, service_name_or_list, total_price=None, reply_token=None):
+    """處理預約請求，包括單項非數字價格服務和多項法事總結"""
+    
+    is_ritual_summary = isinstance(service_name_or_list, list)
+
+    if is_ritual_summary: # 法事總結
+        service_display = "\n".join([f"- {item}" for item in service_name_or_list]) if service_name_or_list else "未選擇項目"
+        price_display = f"NT${total_price}" if total_price is not None else "計算錯誤"
+        log_service = f"法事組合 ({len(service_name_or_list)}項)"
+    else: # 單項服務
+        service_display = service_name_or_list
+        price_display = f"NT${SERVICE_FEES.get(service_name_or_list, '洽詢')}"
+        log_service = service_name_or_list
+
+    # --- 通知老師 (包含最終項目和總價) ---
+    notification_base_text = (f"【服務請求】\n"
+                              f"用戶ID: {user_id}\n" 
+                              f"服務項目:\n{service_display}\n"
+                              f"費用: {price_display}\n"
+                              f"時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    try:
+        notify_teacher(notification_base_text)
+    except Exception as e:
+        logging.error(f"Failed to notify teacher: {e}")
+
+    # --- 回覆客戶 ---
+    if is_ritual_summary: # 法事總結回覆
+        if not service_name_or_list: 
+            reply_text_to_user = "您尚未選擇任何法事項目。請重新操作。"
+        else:
+            # 這裡產生包含總價和匯款資訊的回覆
+            reply_text_to_user = f"您已選擇以下法事項目：\n{service_display}\n\n"
+            reply_text_to_user += f"總費用：{price_display}\n\n"
+            reply_text_to_user += "法事將於下個月由老師擇日統一進行。\n"
+            reply_text_to_user += "請您完成匯款後告知末五碼，以便老師為您安排：\n"
+            reply_text_to_user += f"銀行代碼：{payment_details['bank_code']}\n"
+            reply_text_to_user += f"銀行名稱：{payment_details['bank_name']}\n"
+            reply_text_to_user += f"帳號：{payment_details['account_number']}\n\n"
+            reply_text_to_user += "感謝您的預約！"
+    else: # 單項服務回覆
+        reply_text_to_user = f"感謝您預約「{service_display}」服務。\n"
+        reply_text_to_user += f"費用：{price_display}\n\n"
+        reply_text_to_user += "老師將盡快與您聯繫，確認服務細節。"
+
+    # --- 發送回覆與主選單 ---
+    send_message(user_id, TextMessage(text=reply_text_to_user), reply_token)
+    main_menu_message = create_main_menu_message()
+    send_message(user_id, main_menu_message)
+
 # --- Webhook 主要處理函式 ---
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -618,44 +729,57 @@ def handle_message(event):
             notify_teacher(f"有使用者查詢了 {user_message} 服務。")
         elif user_message in ["法事"]:
             # 初始化使用者的法事選擇
-            user_ritual_selections[user_id] = []
-            reply_content = create_ritual_selection_template(user_id)
+            user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
+            reply_content = create_ritual_selection_message(user_id)
             notify_teacher("有使用者查詢了法事項目。")
         elif user_message.startswith("選擇法事: "):
             # 記錄使用者的法事選擇
             selected_ritual = user_message.replace("選擇法事: ", "")
-            if user_id not in user_ritual_selections:
-                user_ritual_selections[user_id] = []
+            
+            # 確保使用者狀態初始化
+            if user_id not in user_states:
+                user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
             
             # 模擬反白效果：如果已選擇則移除，否則添加
-            if selected_ritual in user_ritual_selections[user_id]:
-                user_ritual_selections[user_id].remove(selected_ritual)
+            current_selection = user_states[user_id]["data"]["selected_rituals"]
+            if selected_ritual in current_selection:
+                current_selection.remove(selected_ritual)
             else:
-                user_ritual_selections[user_id].append(selected_ritual)
+                current_selection.append(selected_ritual)
             
-            reply_content = create_ritual_selection_template(user_id)
+            reply_content = create_ritual_selection_message(user_id)
         elif user_message == "完成法事選擇":
-            reply_content = create_ritual_confirmation_flex(user_id)
+            if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
+                selected_rituals = user_states[user_id]["data"]["selected_rituals"]
+                total_price, final_item_list = calculate_total_price(selected_rituals)
+                reply_content = create_text_with_menu_button(
+                    f"您已選擇以下法事項目：\n{', '.join(final_item_list)}\n\n總費用：NT${total_price}",
+                    alt_text="法事確認"
+                )
         elif user_message == "確認法事費用":
             reply_content = create_payment_info_message()
         elif user_message == "匯款完成":
-            selections = user_ritual_selections.get(user_id, [])
-            total_cost = 0
-            for item in selections:
-                if item in ritual_prices_info:
-                    total_cost += ritual_prices_info[item]["price"]
+            if user_id in user_states and "selected_rituals" in user_states[user_id].get("data", {}):
+                selections = user_states[user_id]["data"]["selected_rituals"]
+                total_price, _ = calculate_total_price(selections)
 
-            # 通知老師
-            message_to_teacher = f"使用者 {user_id} 已完成匯款：\n選擇項目：{', '.join(selections)}\n總費用：NT$ {total_cost}\n請等待使用者提供末五碼以核對。"
-            notify_teacher(message_to_teacher)
+                # 通知老師
+                message_to_teacher = f"使用者 {user_id} 已完成匯款：\n選擇項目：{', '.join(selections)}\n總費用：NT$ {total_price}\n請等待使用者提供末五碼以核對。"
+                notify_teacher(message_to_teacher)
 
-            reply_content = create_text_with_menu_button(
-                "感謝您的匯款！請提供帳號末五碼以便核對。",
-                alt_text="匯款完成"
-            )
+                reply_content = create_text_with_menu_button(
+                    "感謝您的匯款！請提供帳號末五碼以便核對。",
+                    alt_text="匯款完成"
+                )
 
-            # 清除使用者的法事選擇
-            user_ritual_selections.pop(user_id, None)
+                # 清除使用者的法事選擇
+                if user_id in user_states:
+                    del user_states[user_id]
+            else:
+                reply_content = create_text_with_menu_button(
+                    "無法找到您的法事選擇記錄，請重新操作。",
+                    alt_text="匯款完成"
+                )
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
             reply_content = create_payment_info_message()
         elif user_message in ["IG"]:
@@ -711,11 +835,10 @@ def handle_message(event):
             except Exception as e:
                 logging.error(f"Error sending reply message: {e}")
 
-# --- 處理 Postback 事件（日期選擇器回應） ---
+# --- 處理 Postback 事件（包含所有按鈕回調） ---
 @handler.add(PostbackEvent)
 def handle_postback(event):
     user_id = event.source.user_id
-    postback_data = event.postback.data
     reply_content = None
 
     if not channel_access_token:
@@ -725,6 +848,16 @@ def handle_postback(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
 
+        try:
+            # 嘗試解析 JSON 格式的 postback data
+            postback_data = json.loads(event.postback.data)
+            action = postback_data.get('action')
+        except (json.JSONDecodeError, TypeError):
+            # 非 JSON 格式或為老式格式 (如生日選擇器)
+            postback_data = event.postback.data
+            action = None
+        
+        # --- 處理生日選擇 ---
         if postback_data == "action=select_birthday":
             # 使用者選擇了生日，儲存生日並顯示時辰選擇
             birthday = event.postback.params['date']
@@ -749,15 +882,79 @@ def handle_postback(event):
                 text="請選擇您的出生時辰：\n2300-0059 子 | 0100-0259 丑\n0300-0459 寅 | 0500-0659 卯\n0700-0859 辰 | 0900-1059 巳\n1100-1259 午 | 1300-1459 未\n1500-1659 申 | 1700-1859 酉\n1900-2059 戌 | 2100-2259 亥",
                 quick_reply=QuickReply(items=quick_reply_items)
             )
+        
+        # --- 處理：選擇服務 (預約或問事) ---
+        elif action == 'select_service':
+            selected_service = postback_data.get('service')
+            if selected_service == "法事":
+                # 初始化法事選擇狀態
+                user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
+                logging.info(f"State set for user {user_id}: selecting_rituals")
+                reply_content = create_ritual_selection_message(user_id) # 顯示法事選擇畫面
+            # ... (其他服務的處理)
 
+        # --- 處理選擇具體法事項目 (加入/移除選擇) ---
+        elif action == 'select_ritual_item':
+            selected_ritual = postback_data.get('ritual')
+            if selected_ritual:
+                logging.info(f"User {user_id} toggled ritual item: {selected_ritual}")
+                # 更新用戶狀態中的已選列表
+                if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals":
+                    # 理論上不該發生，但做個防呆
+                    user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [selected_ritual]}}
+                    logging.warning(f"User {user_id} was not in selecting_rituals state, resetting.")
+                else:
+                    current_selection = user_states[user_id]["data"]["selected_rituals"]
+                    # 切換選擇狀態
+                    if selected_ritual in current_selection:
+                        current_selection.remove(selected_ritual)
+                        logging.info(f"Removed '{selected_ritual}' from selection for {user_id}")
+                    else:
+                        current_selection.append(selected_ritual)
+                        logging.info(f"Added '{selected_ritual}' to selection for {user_id}")
+                # 重新顯示選擇畫面
+                reply_content = create_ritual_selection_message(user_id)
+
+        # --- 處理完成法事選擇 ---
+        elif action == 'confirm_rituals':
+            if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
+                selected_rituals = user_states[user_id].get("data", {}).get("selected_rituals", [])
+                logging.info(f"User {user_id} confirmed rituals: {selected_rituals}")
+                if not selected_rituals:
+                    # 提示用戶尚未選擇
+                    alert_text = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成。")
+                    selection_menu = create_ritual_selection_message(user_id)
+                    reply_content = [alert_text, selection_menu]
+                else:
+                    # 計算總價並處理預約
+                    total_price, final_item_list = calculate_total_price(selected_rituals)
+                    handle_booking_request(user_id, final_item_list, total_price)
+                    # 清除狀態
+                    if user_id in user_states:
+                        del user_states[user_id]
+        
+        # --- 處理其他 action ---
+        elif action == 'show_main_menu':
+            reply_content = create_main_services_flex()
+
+        # --- 發送回覆 ---
         if reply_content:
             try:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply_content]
+                # 如果 reply_content 是列表（多個訊息），則逐一發送
+                if isinstance(reply_content, list):
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=reply_content
+                        )
                     )
-                )
+                else:
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[reply_content]
+                        )
+                    )
             except Exception as e:
                 logging.error(f"Error sending reply message: {e}")
 
