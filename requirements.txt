@@ -1,3 +1,15 @@
+<<<<<<< HEAD
+Flask==2.3.3
+line-bot-sdk==3.17.1
+google-api-python-client==2.45.0
+google-auth==2.6.0
+google-auth-httplib2==0.1.0
+google-auth-oauthlib==0.5.1
+pytz==2022.1
+gunicorn==20.1.0
+Werkzeug==2.3.8
+python-dotenv==0.20.0
+=======
 Flask==2.3.3
 line-bot-sdk==3.17.1
 google-api-python-client==2.45.0
@@ -9,3 +21,4 @@ gunicorn==20.1.0
 Werkzeug==2.3.8
 python-dotenv==0.20.0
 apscheduler==3.10.4
+>>>>>>> 6525685fb5b1dbcb3ace258657b3b1b09cd0f0f6
