@@ -38,7 +38,7 @@ from google.oauth2 import service_account
 import pytz
 
 # --- 加入版本標記 ---
-BOT_VERSION = "v1.13.4" # Increment version for ritual selection UI fix
+BOT_VERSION = "v1.13.5" # Increment version for Push API optimization
 print(f"運行版本：{BOT_VERSION}")
 
 app = Flask(__name__)
@@ -199,17 +199,11 @@ def create_ritual_selection_message(user_id):
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # *** 修正處：檢查 handler 是否為 None ***
-    if handler is None:
-        app.logger.critical("Webhook handler is not initialized. Check LINE_CHANNEL_SECRET.")
-        abort(500) # Internal Server Error
-
+    if handler is None: app.logger.critical("Webhook handler is not initialized."); abort(500)
     signature = request.headers['X-Line-Signature']
     body = request.get_data(as_text=True)
     app.logger.info(f"Request body: {body}")
-    try:
-        # *** 修正處：使用 handler.handle ***
-        handler.handle(body, signature)
+    try: handler.handle(body, signature)
     except InvalidSignatureError: app.logger.error("Invalid signature."); abort(400)
     except Exception as e: app.logger.exception(f"Error handling request: {e}"); abort(500)
     return 'OK'
@@ -302,29 +296,49 @@ def handle_postback(event):
                         bubble = FlexBubble(body=FlexBox(layout='vertical', spacing='md', contents=contents))
                         reply_message = FlexMessage(alt_text='請選擇您的出生年月日時', contents=bubble)
             else: app.logger.warning(f"Postback 'select_service' missing service for user {user_id}"); reply_message = TextMessage(text="發生錯誤..."); follow_up_message = create_main_menu_message()
+
+        # *** 修改處：處理選擇具體法事項目後 (僅更新狀態，不發送訊息) ***
         elif action == 'select_ritual_item':
             selected_ritual = postback_data.get('ritual')
             if selected_ritual:
                 app.logger.info(f"User {user_id} toggled ritual item: {selected_ritual}")
-                if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals": user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [selected_ritual]}}; app.logger.warning(f"User {user_id} was not in selecting_rituals state, resetting.")
+                if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals":
+                    user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [selected_ritual]}}
+                    app.logger.warning(f"User {user_id} was not in selecting_rituals state, resetting.")
                 else:
                     current_selection = user_states[user_id]["data"]["selected_rituals"]
-                    if selected_ritual in current_selection: current_selection.remove(selected_ritual); app.logger.info(f"Removed '{selected_ritual}' from selection for {user_id}")
-                    else: current_selection.append(selected_ritual); app.logger.info(f"Added '{selected_ritual}' to selection for {user_id}")
-                # *** 修改處：只發送更新後的選單 ***
-                reply_message = create_ritual_selection_message(user_id)
-            else: app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}"); reply_message = TextMessage(text="發生錯誤..."); follow_up_message = create_main_menu_message()
+                    if selected_ritual in current_selection:
+                         current_selection.remove(selected_ritual)
+                         app.logger.info(f"Removed '{selected_ritual}' from selection for {user_id}")
+                    else:
+                         current_selection.append(selected_ritual)
+                         app.logger.info(f"Added '{selected_ritual}' to selection for {user_id}")
+                # *** 修改處：移除 reply_message = create_ritual_selection_message(user_id) ***
+                # 僅更新狀態，不立即回覆訊息以節省 Push API 用量
+                reply_message = None # 設為 None 確保不發送任何訊息
+            else:
+                app.logger.warning(f"Postback 'select_ritual_item' missing ritual for user {user_id}")
+                reply_message = TextMessage(text="發生錯誤，無法識別您選擇的法事項目。")
+                # 這裡可以考慮是否要 follow_up_message = create_main_menu_message()
+
         elif action == 'confirm_rituals':
              if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
                  selected_rituals = user_states[user_id].get("data", {}).get("selected_rituals", [])
                  app.logger.info(f"User {user_id} confirmed rituals: {selected_rituals}")
                  if not selected_rituals:
-                      # *** 修改處：將提示和選單放入列表 ***
-                      alert_text = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成。")
-                      selection_menu = create_ritual_selection_message(user_id)
-                      reply_message = [alert_text, selection_menu]
-                 else: total_price, final_item_list = calculate_total_price(selected_rituals); handle_booking_request(user_id, final_item_list, total_price); del user_states[user_id]
-             else: app.logger.warning(f"User {user_id} clicked confirm_rituals but not in correct state."); reply_message = create_main_menu_message()
+                      # *** 修改處：只發送提示文字，不重新顯示選單 ***
+                      reply_message = TextMessage(text="您尚未選擇任何法事項目，請選擇後再點擊完成選擇。")
+                      # selection_menu = create_ritual_selection_message(user_id)
+                      # reply_message = [alert_text, selection_menu] # 移除選單
+                 else:
+                      total_price, final_item_list = calculate_total_price(selected_rituals)
+                      handle_booking_request(user_id, final_item_list, total_price) # handle_booking_request 會發送確認和主選單
+                      del user_states[user_id]
+                      reply_message = None # 清除 reply_message，因為 handle_booking_request 會處理
+             else:
+                 app.logger.warning(f"User {user_id} clicked confirm_rituals but not in correct state.")
+                 reply_message = create_main_menu_message()
+
         elif action == 'collect_birth_info':
             selected_datetime_str = event.postback.params.get('datetime')
             if selected_datetime_str:
@@ -357,6 +371,7 @@ def handle_postback(event):
         if isinstance(reply_message, list): messages_to_send.extend(reply_message)
         else: messages_to_send.append(reply_message)
     if follow_up_message: messages_to_send.append(follow_up_message)
+    # *** 修改處：只有在 messages_to_send 非空時才發送 ***
     if messages_to_send: send_message(user_id, messages_to_send)
 
 
