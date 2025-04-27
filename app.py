@@ -285,23 +285,12 @@ def create_payment_info_message():
 銀行名稱：{payment_details['bank_name']}
 帳號：{payment_details['account_number']}
 
-（匯款後請點擊下方「匯款完成」按鈕並告知末五碼以便核對）"""
+（匯款後請回覆「匯款完成」並告知末五碼以便核對）"""
     
     logging.info("创建匯款信息消息")
     
-    # 创建按钮模板
-    template = ButtonsTemplate(
-        text=payment_text[:160],  # 限制文本长度
-        actions=[
-            MessageAction(label='匯款完成', text='匯款完成'),
-            MessageAction(label='返回主選單', text='服務項目')
-        ]
-    )
-    
-    return [
-        TextMessage(text=payment_text),
-        TemplateMessage(alt_text="匯款資訊", template=template)
-    ]
+    # 直接返回文本消息
+    return TextMessage(text=payment_text)
 
 def create_booking_submenu_flex():
     bubble = FlexBubble(
@@ -745,101 +734,103 @@ def handle_message(event):
             user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
             logging.info(f"初始化用户法事选择状态: {user_states[user_id]}")
             
-            # 创建法事选择消息
+            # 使用简单文本消息列出所有选项
             ritual_items = [
                 "冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)", "三合一 (個人)",
                 "冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)", "三合一 (祖先)"
             ]
             
-            # 使用QuickReply提供快速选择按钮
-            quick_reply_items = []
-            for item in ritual_items:
-                quick_reply_items.append(
-                    QuickReplyItem(
-                        action=MessageAction(
-                            label=item,
-                            text=f"選擇法事: {item}"
-                        )
-                    )
-                )
+            # 创建文本消息
+            ritual_text = "請選擇您需要的法事項目（回覆編號即可選擇）：\n\n"
+            for i, item in enumerate(ritual_items, 1):
+                price = SERVICE_FEES.get(item, "洽詢")
+                price_display = f"NT${price}" if isinstance(price, int) else price
+                ritual_text += f"{i}. {item} ({price_display})\n"
             
-            # 添加完成选择按钮
-            quick_reply_items.append(
-                QuickReplyItem(
-                    action=MessageAction(
-                        label="完成選擇",
-                        text="完成法事選擇"
-                    )
-                )
-            )
+            ritual_text += "\n選擇方式：請回覆「選擇+編號」，例如「選擇1」\n"
+            ritual_text += "可多選，選擇完成後請回覆「完成」\n"
+            ritual_text += "要取消選擇，請回覆「取消+編號」，例如「取消1」"
             
-            # 添加返回主选单按钮
-            quick_reply_items.append(
-                QuickReplyItem(
-                    action=MessageAction(
-                        label="返回主選單",
-                        text="服務項目"
-                    )
-                )
-            )
+            # 存储项目列表以供后续使用
+            user_states[user_id]["data"]["ritual_items"] = ritual_items
             
-            # 创建简单文本消息并添加快速回复按钮
-            text_message = TextMessage(
-                text="請選擇您需要的法事項目 (可多選)：\n"
-                     "- 冤親債主 (個人/祖先)\n"
-                     "- 補桃花 (個人/祖先)\n"
-                     "- 補財庫 (個人/祖先)\n"
-                     "- 三合一 (個人/祖先)\n\n"
-                     "選擇完成後請點擊「完成選擇」",
-                quick_reply=QuickReply(items=quick_reply_items[:12])  # 限制最多12个按钮
-            )
-            
-            # 同时发送Flex消息和文本消息
-            reply_content = [text_message, create_ritual_selection_message(user_id)]
-            logging.info(f"生成法事选择消息")
+            reply_content = TextMessage(text=ritual_text)
+            logging.info(f"发送简单法事选择消息")
             notify_teacher("有使用者查詢了法事項目。")
             
-        elif user_message.startswith("選擇法事: "):
-            # 記錄使用者的法事選擇
-            selected_ritual = user_message.replace("選擇法事: ", "")
-            logging.info(f"用户通过消息选择法事: {selected_ritual}")
+        # 处理选择法事编号
+        elif user_message.startswith("選擇") and user_message[2:].isdigit():
+            index = int(user_message[2:]) - 1
+            logging.info(f"用户选择法事编号: {index+1}")
             
-            # 確保使用者狀態初始化
             if user_id not in user_states:
-                user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
-                logging.info(f"初始化用户状态: {user_states[user_id]}")
+                user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": [], "ritual_items": []}}
+                logging.info("初始化用户状态")
             
-            # 模擬反白效果：如果已選擇則移除，否則添加
-            current_selection = user_states[user_id]["data"]["selected_rituals"]
-            if selected_ritual in current_selection:
-                current_selection.remove(selected_ritual)
-                logging.info(f"从选择中移除: {selected_ritual}")
-                reply_text = f"已取消選擇：{selected_ritual}"
-            else:
-                current_selection.append(selected_ritual)
-                logging.info(f"添加到选择: {selected_ritual}")
+            ritual_items = user_states[user_id]["data"].get("ritual_items", [])
+            if 0 <= index < len(ritual_items):
+                selected_ritual = ritual_items[index]
+                current_selection = user_states[user_id]["data"]["selected_rituals"]
                 
-            logging.info(f"当前选择列表: {current_selection}")
+                # 如果已选择则忽略
+                if selected_ritual not in current_selection:
+                    current_selection.append(selected_ritual)
+                    logging.info(f"添加选择: {selected_ritual}")
+                    
+                # 显示当前选择
+                selection_text = "您已選擇：\n"
+                for item in current_selection:
+                    price = SERVICE_FEES.get(item, "洽詢")
+                    price_display = f"NT${price}" if isinstance(price, int) else price
+                    selection_text += f"- {item} ({price_display})\n"
+                
+                selection_text += "\n可繼續選擇，或回覆「完成」確認選擇"
+                reply_content = TextMessage(text=selection_text)
+            else:
+                reply_content = TextMessage(text="無效的選擇編號，請重新選擇")
+        
+        # 处理取消选择
+        elif user_message.startswith("取消") and user_message[2:].isdigit():
+            index = int(user_message[2:]) - 1
+            logging.info(f"用户取消法事编号: {index+1}")
             
-            # 显示当前选择状态
-            current_selection_text = "\n".join([f"- {item}" for item in current_selection])
-            status_message = TextMessage(
-                text=f"{reply_text}\n\n當前已選擇項目：\n{current_selection_text if current_selection else '無'}"
-            )
-            
-            # 返回当前选择状态和更新的Flex消息
-            reply_content = [status_message, create_ritual_selection_message(user_id)]
-            
-        elif user_message == "完成法事選擇":
+            if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
+                ritual_items = user_states[user_id]["data"].get("ritual_items", [])
+                if 0 <= index < len(ritual_items):
+                    selected_ritual = ritual_items[index]
+                    current_selection = user_states[user_id]["data"]["selected_rituals"]
+                    
+                    # 移除已选项目
+                    if selected_ritual in current_selection:
+                        current_selection.remove(selected_ritual)
+                        logging.info(f"移除选择: {selected_ritual}")
+                    
+                    # 显示当前选择
+                    if current_selection:
+                        selection_text = "您已選擇：\n"
+                        for item in current_selection:
+                            price = SERVICE_FEES.get(item, "洽詢")
+                            price_display = f"NT${price}" if isinstance(price, int) else price
+                            selection_text += f"- {item} ({price_display})\n"
+                    else:
+                        selection_text = "您目前未選擇任何項目"
+                    
+                    selection_text += "\n可繼續選擇，或回覆「完成」確認選擇"
+                    reply_content = TextMessage(text=selection_text)
+                else:
+                    reply_content = TextMessage(text="無效的選擇編號，請重新選擇")
+            else:
+                reply_content = TextMessage(text="您尚未開始選擇法事，請先輸入「法事」")
+        
+        # 处理完成选择命令
+        elif user_message in ["完成", "完成選擇", "完成法事選擇"]:
             logging.info(f"用户完成法事选择")
             if user_id in user_states and user_states[user_id].get("state") == "selecting_rituals":
                 selected_rituals = user_states[user_id]["data"]["selected_rituals"]
                 logging.info(f"用户已选择: {selected_rituals}")
                 
                 if not selected_rituals:
-                    reply_content = TextMessage(
-                        text="您尚未選擇任何法事項目，請先選擇項目後再完成。"
-                    )
+                    reply_content = TextMessage(text="您尚未選擇任何法事項目，請先選擇項目後再完成。")
                     logging.info("用户未选择任何项目")
                 else:
                     total_price, final_item_list = calculate_total_price(selected_rituals)
@@ -852,41 +843,51 @@ def handle_message(event):
                         confirmation_text += f"- {item} (NT${price})\n"
                     
                     confirmation_text += f"\n總費用：NT${total_price}\n\n"
-                    confirmation_text += "請確認您的選擇："
+                    confirmation_text += "請回覆「確認」進行匯款，或「重選」重新選擇"
                     
-                    # 创建确认按钮
-                    confirm_template = ButtonsTemplate(
-                        text=confirmation_text[:160],  # 限制文本长度
-                        actions=[
-                            PostbackAction(
-                                label="確認並進行匯款",
-                                data=json.dumps({"action": "confirm_payment"}),
-                                display_text="確認法事費用"
-                            ),
-                            MessageAction(
-                                label="重新選擇",
-                                text="法事"
-                            ),
-                            MessageAction(
-                                label="返回主選單",
-                                text="服務項目"
-                            )
-                        ]
-                    )
+                    # 保存最终选择和价格
+                    user_states[user_id]["data"]["final_items"] = final_item_list
+                    user_states[user_id]["data"]["total_price"] = total_price
+                    user_states[user_id]["state"] = "confirming_rituals"
                     
-                    reply_content = [
-                        TextMessage(text=confirmation_text),
-                        TemplateMessage(alt_text="確認法事選擇", template=confirm_template)
-                    ]
+                    reply_content = TextMessage(text=confirmation_text)
             else:
-                reply_content = TextMessage(
-                    text="您尚未開始選擇法事項目，請先選擇「法事」服務。"
-                )
-                logging.info("用户未处于法事选择状态")
+                reply_content = TextMessage(text="您尚未開始選擇法事，請先輸入「法事」")
         
-        elif user_message == "確認法事費用":
-            reply_content = create_payment_info_message()
-            logging.info("显示匯款信息")
+        # 处理确认命令
+        elif user_message in ["確認", "確認選擇", "確認法事費用"]:
+            if user_id in user_states and user_states[user_id].get("state") == "confirming_rituals":
+                logging.info(f"用户确认法事选择并准备付款")
+                
+                # 显示匯款信息
+                payment_text = f"""【匯款資訊】
+🌟 匯款帳號：
+銀行代碼：{payment_details['bank_code']}
+銀行名稱：{payment_details['bank_name']}
+帳號：{payment_details['account_number']}
+
+完成匯款後請回覆「匯款完成」並告知末五碼以便核對。"""
+                
+                # 更新状态为等待付款
+                user_states[user_id]["state"] = "waiting_payment"
+                
+                reply_content = TextMessage(text=payment_text)
+                logging.info("发送匯款信息")
+            else:
+                reply_content = TextMessage(text="請先選擇法事項目並完成選擇")
+        
+        # 处理重选命令
+        elif user_message in ["重選", "重新選擇"]:
+            if user_id in user_states and user_states[user_id].get("state") in ["confirming_rituals", "selecting_rituals"]:
+                # 重置选择
+                user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
+                logging.info("重置用户法事选择")
+                
+                # 触发法事选择流程
+                reply_content = TextMessage(text="已重置您的選擇，請輸入「法事」重新開始")
+            else:
+                reply_content = TextMessage(text="您尚未開始選擇法事，請先輸入「法事」")
+                
         elif user_message == "匯款完成":
             logging.info(f"用户 {user_id} 报告匯款完成")
             
@@ -967,6 +968,7 @@ def handle_message(event):
         
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
             reply_content = create_payment_info_message()
+            logging.info("显示匯款信息")
         elif user_message in ["IG"]:
             text_to_reply = other_services_keywords["IG"]
             reply_content = create_text_with_menu_button(text_to_reply, alt_text="IG")
