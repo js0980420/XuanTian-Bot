@@ -55,8 +55,8 @@ SERVICE_FEES = {
 # 定義三合一組合內容
 PERSONAL_BUNDLE_ITEMS = {"冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)"}
 ANCESTOR_BUNDLE_ITEMS = {"冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)"}
-PERSONAL_BUNDLE_NAME = "三合一 (個人)"
-ANCESTOR_BUNDLE_NAME = "三合一 (祖先)"}
+PERSONAL_BUNDLE_NAME = "{三合一 (個人)"}
+ANCESTOR_BUNDLE_NAME = "{三合一 (祖先)"}
 
 # 匯款資訊
 payment_details = {
