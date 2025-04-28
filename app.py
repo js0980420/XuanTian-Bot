@@ -45,14 +45,11 @@ other_services_keywords = {
     "IG": f"追蹤我們的 Instagram：{ig_link}"
 }
 
-# 法事服務項目與價格
-SERVICE_FEES = {
-    "補財庫": 680,
-    "煙供": 680,
-    "生基": 680,
-    "安斗": 1800
+# 法事價格
+ritual_prices_info = {
+    "冤親債主/補桃花/補財庫": {"single": 680, "combo": 1800},
+    "祖先": {"single": 1800}
 }
-TRIPLE_COMBO_PRICE = 1800  # 三合一價格
 
 # 匯款資訊
 payment_details = {
@@ -212,12 +209,60 @@ def notify_teacher(message_text):
             except Exception as e:
                 logging.error(f"通知老師失敗: {e}")
 
-# 計算總價
-def calculate_total_price(selected_rituals):
-    if len(selected_rituals) == 3 and all(r in ["補財庫", "煙供", "生基"] for r in selected_rituals):
-        return TRIPLE_COMBO_PRICE, ["三合一（補財庫、煙供、生基）"]
-    total = sum(SERVICE_FEES.get(item, 0) for item in selected_rituals)
-    return total, selected_rituals
+def create_ritual_prices_flex():
+    """產生法事項目與費用的 Flex Message (加入返回主選單按鈕)"""
+    contents = [
+        FlexText(text='法事項目與費用', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
+    ]
+    for item, prices in ritual_prices_info.items():
+        price_texts = []
+        if "single" in prices:
+            price_texts.append(f"NT$ {prices['single']} / 份")
+        if "combo" in prices:
+             price_texts.append(f"(三合一/一條龍: 三份 NT$ {prices['combo']})")
+
+        contents.extend([
+            FlexSeparator(margin='lg'),
+            FlexText(text=item, weight='bold', size='md', margin='md'),
+            FlexText(text=" ".join(price_texts), size='sm', color='#555555', wrap=True)
+        ])
+
+    if "冤親債主/補桃花/補財庫" in ritual_prices_info and "combo" in ritual_prices_info["冤親債主/補桃花/補財庫"]:
+         contents.append(FlexSeparator(margin='lg'))
+         contents.append(FlexText(text='⚜️ 三合一/一條龍包含：冤親債主、補桃花、補財庫。', size='sm', color='#888888', wrap=True, margin='md'))
+
+    contents.append(FlexSeparator(margin='xl'))
+    # *** 加入按鈕到 Footer ***
+    footer_buttons = [
+        FlexButton(
+            action={'type': 'message', 'label': '了解匯款資訊', 'text': '匯款資訊'},
+            style='primary',
+            color='#8C6F4E',
+            height='sm',
+            margin='md'
+        ),
+        FlexSeparator(margin='md'), # 分隔線
+        FlexButton(
+            action=create_return_to_menu_button().as_dict(), # 使用輔助函式產生返回按鈕的 action
+            style='link', # 使用 link 樣式
+            height='sm',
+            color='#555555' # 深灰色文字
+        )
+    ]
+
+    bubble = FlexBubble(
+        body=FlexBox(
+            layout='vertical',
+            contents=contents
+        ),
+        footer=FlexBox( # 新增 Footer
+             layout='vertical',
+             spacing='sm',
+             contents=footer_buttons
+        ),
+         styles={'body': {'backgroundColor': '#F9F9F9'}, 'footer': {'separator': True}} # 淺灰色背景
+    )
+    return FlexMessage(alt_text='法事項目與費用', contents=bubble)
 
 # 處理預約請求
 def handle_booking_request(user_id, service_name_or_list, total_price=None, reply_token=None):
