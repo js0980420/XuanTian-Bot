@@ -309,31 +309,28 @@ def handle_text_message(event):
             reply_content = create_main_menu_message() # 準備主選單
             if user_id in user_states: app.logger.info(f"Clearing state for user {user_id} after consultation info submission."); del user_states[user_id]
 
-    # --- 如果不在特定流程中，處理主選單相關文字 ---
-    elif text_lower in ["服務", "服務項目", "選單", "menu"]:
-        reply_content = create_main_menu_message()
-    elif text_lower == "如何預約":
-        reply_content = TextMessage(text=how_to_book_instructions)
-        # 附加主選單按鈕
-        reply_content.quick_reply = QuickReply(items=[QuickReplyButton(action=create_return_to_menu_action())])
-    elif text_lower == "問事" or text_lower == "命理諮詢":
-        app.logger.info(f"User {user_id} triggered consultation flow via text.")
-        picker_data = json.dumps({"action": "collect_birth_info"})
-        if len(picker_data.encode('utf-8')) > 300: app.logger.error(f"問事/命理 Picker data too long for user {user_id}"); reply_content = TextMessage(text="系統錯誤...")
-        else:
-            min_date = "1920-01-01T00:00"; max_date = datetime.datetime.now(TW_TIMEZONE).strftime('%Y-%m-%dT%H:%M')
-            # 使用 Template Message 包含日期選擇器和返回按鈕
-            reply_content = TemplateMessage(
-                alt_text='請選擇您的出生年月日時',
-                template=ButtonsTemplate(
-                    title='命理諮詢',
-                    text='進行命理分析需要您的出生年月日時。\n若不確定準確時辰，可先選擇大概時間。',
-                    actions=[
-                        DatetimePickerAction(label='📅 點此選擇生日時辰', data=picker_data, mode='datetime', min=min_date, max=max_date),
-                        create_return_to_menu_action() # 加入返回按鈕
-                    ]
-                )
-            )
+   elif text_lower == "問事" or text_lower == "命理諮詢":
+        app.logger.info(f"User {user_id} triggered consultation keyword.")
+        # *** 修改處：直接準備包含所有須知的說明文字 ***
+        consultation_info_text = """【問事/命理諮詢須知】
+問事費用：NT$600 (不限制時間與問題，但一定要詳細！)
+
+請準備以下資訊，並直接在此聊天室中一次提供：
+1.  ✅姓名
+2.  ✅國曆生日 (年/月/日，請提供身分證上的出生年月日)
+3.  ✅出生時間 (請提供幾點幾分，例如 14:30 或 23:15，若不確定請告知大概時段如「晚上」或「接近中午」)
+4.  ✅想詢問的問題 (請盡量詳細描述人、事、時、地、物，越詳細越好)
+5.  ✅照片需求：
+    🔵問感情：請提供雙方姓名、生日、合照。
+    🔵問其他事情：請提供個人清晰的雙手照片。
+
+✅匯款資訊：
+🌟 銀行：822 中國信託
+🌟 帳號：510540490990
+
+感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。資料留完後請耐心等待，通常三天內會完成回覆，感恩🙏
+        reply_content = TextMessage(text=consultation_info_text)
+        # (移除了附加 QuickReply 的部分)
     elif text_lower in ["法事", "預約法事", "法會", "解冤親", "補財庫", "補桃花"]:
         app.logger.info(f"User {user_id} triggered ritual keyword: '{text}'. Entering ritual selection.")
         user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
