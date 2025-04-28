@@ -325,16 +325,60 @@ def handle_postback(event):
         if reply_content:
             line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=[reply_content]))
 
-# 處理加入好友
+# 處理加入好友事件
 @handler.add(FollowEvent)
 def handle_follow(event):
+    """當使用者加入好友時發送歡迎訊息與按鈕選單"""
     user_id = event.source.user_id
+    logging.info(f"User {user_id} followed the bot.")
     notify_teacher(f"有新使用者加入好友：{user_id}")
-    welcome_text = "歡迎加入宇宙玄天院！請輸入「服務項目」查看選單。"
+
+    if not channel_access_token:
+        logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot send follow message.")
+        return
+
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
-        line_bot_api.reply_message(ReplyMessageRequest(reply_token=event.reply_token, messages=[TextMessage(text=welcome_text), create_main_services_flex()]))
 
+        welcome_text = """🌟 歡迎加入宇宙玄天院官方LINE！🌟
+
+感謝您成為宇宙玄天院的一員！本院奉玄天上帝為主神，由雲真居士領導修持道脈，融合儒、釋、道三教之理與現代身心靈智慧，致力於指引您走上自性覺醒與命運轉化之路。
+
+✨ 我們提供以下服務：
+
+• 命理諮詢（數字易經、八字、問事）
+
+• 風水勘察與調理
+
+• 補財庫、煙供、生基、安斗等客製化法會儀軌
+
+• 點燈祈福、開運蠟燭
+
+• 命理課程與法術課程
+
+本院深信：每一個靈魂都能連結宇宙本源，找到生命的方向與力量。讓我們陪伴您走向富足、自主與心靈圓滿之路！💫
+
+📩 現在就點擊下方圖文選單，探索更多服務，或直接與我們聯繫，開啟您的靈性旅程吧！"""
+        welcome_message = TextMessage(text=welcome_text)
+        services_flex = create_main_services_flex()
+
+        try:
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[welcome_message, services_flex]
+                )
+            )
+            logging.info(f"Successfully sent welcome message to user {user_id}")
+        except Exception as e:
+            logging.error(f"Error sending follow message to user {user_id}: {e}")
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[welcome_message, services_flex]  # 即使失敗也嘗試發送相同訊息
+                )
+            )
+        
 # 主程式
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
