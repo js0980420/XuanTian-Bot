@@ -308,7 +308,76 @@ def handle_text_message(event):
             reply_token = None # 避免後續重複使用 Reply Token
             reply_content = create_main_menu_message() # 準備主選單
             if user_id in user_states: app.logger.info(f"Clearing state for user {user_id} after consultation info submission."); del user_states[user_id]
+    elif text_lower == "如何預約"
+    # *** 修改處：直接在此處建立預約子選單 Flex Message ***
+        try:
+            submenu_buttons = []
+            submenu_items = {
+                "問事": {"action": "select_service", "service": "問事/命理"}, # 觸發問事流程
+                "法事": {"action": "select_service", "service": "法事"},   # 觸發法事流程
+                "收驚": {"action": "book_simple_service", "service": "收驚"}, # 直接預約
+                "卜卦": {"action": "book_simple_service", "service": "卜卦"}, # 直接預約
+                "風水勘察與調理": {"action": "book_simple_service", "service": "風水勘察與調理"} # 直接預約 (假設)
+            }
+            submenu_button_style = {'primary': '#8C6F4E', 'secondary': '#EFEBE4'}
 
+            for label, data in submenu_items.items():
+                # 使用 PostbackAction 以便後續處理
+                postback_data_str = json.dumps(data)
+                if len(postback_data_str.encode('utf-8')) <= 300:
+                     submenu_buttons.append(FlexButton(
+                        action=PostbackAction(label=label, data=postback_data_str, display_text=label),
+                        style='primary' if label == "問事" else 'secondary', # 問事用主要顏色
+                        color=submenu_button_style['primary'] if label == "問事" else submenu_button_style['secondary'],
+                        height='sm',
+                        margin='sm'
+                    ))
+                else:
+                    app.logger.warning(f"預約子選單按鈕 Postback data 過長: {postback_data_str}")
+
+            # 加入返回主選單按鈕
+            back_button_data = json.dumps({"action": "show_main_menu"})
+            if len(back_button_data.encode('utf-8')) <= 300:
+                 submenu_buttons.append(FlexButton(
+                    action=PostbackAction(label='返回主選單', data=back_button_data, display_text='返回'),
+                    style='link',
+                    height='sm',
+                    color='#555555',
+                    margin='lg' # 與上方按鈕間距拉大
+                ))
+            else:
+                 app.logger.error("Back button data too long for booking submenu!")
+
+
+            bubble = FlexBubble(
+                header=FlexBox(
+                    layout='vertical',
+                    contents=[FlexText(text='預約服務選項', weight='bold', size='xl', color='#5A3D1E', align='center')]
+                ),
+                body=FlexBox(
+                    layout='vertical',
+                    spacing='md',
+                    contents=[
+                        FlexText(text='請選擇您需要的服務類型：', wrap=True, size='sm', color='#333333'),
+                        FlexSeparator(margin='md')
+                    ]
+                ),
+                footer=FlexBox( # 將按鈕放在 Footer
+                    layout='vertical',
+                    spacing='sm',
+                    contents=submenu_buttons
+                ),
+                styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}}
+            )
+            reply_content = FlexMessage(alt_text='預約服務選項', contents=bubble)
+            notify_teacher("有使用者查詢了預約服務選項。") # 保留通知
+
+        except Exception as e:
+            app.logger.error(f"建立預約子選單時發生錯誤: {e}")
+            reply_content = TextMessage(text="抱歉，顯示預約選項時發生錯誤，請稍後再試。")
+
+    # ... (處理其他關鍵字，例如 "問事", "法事" 等，這些仍然需要保留，因為子選單按鈕會觸發這些文字) ...
+    
     elif text_lower == "問事" or text_lower == "命理諮詢":
         app.logger.info(f"User {user_id} triggered consultation keyword.")
         # *** 修改處：直接準備包含所有須知的說明文字 ***
