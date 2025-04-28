@@ -45,11 +45,18 @@ other_services_keywords = {
     "IG": f"追蹤我們的 Instagram：{ig_link}"
 }
 
-# 法事價格
-ritual_prices_info = {
-    "冤親債主/補桃花/補財庫": {"single": 680, "combo": 1800},
-    "祖先": {"single": 1800}
-}
+# --- 服務費用設定 (更新版) ---
+SERVICE_FEES = {
+    "冤親債主 (個人)": 680, "補桃花 (個人)": 680, "補財庫 (個人)": 680,
+    "三合一 (個人)": 1800,
+    "冤親債主 (祖先)": 1800, "補桃花 (祖先)": 1800, "補財庫 (祖先)": 1800,
+    "三合一 (祖先)": 5400,
+    
+# 定義三合一組合內容
+PERSONAL_BUNDLE_ITEMS = {"冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)"}
+ANCESTOR_BUNDLE_ITEMS = {"冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)"}
+PERSONAL_BUNDLE_NAME = "三合一 (個人)"
+ANCESTOR_BUNDLE_NAME = "三合一 (祖先)"
 
 # 匯款資訊
 payment_details = {
@@ -209,60 +216,24 @@ def notify_teacher(message_text):
             except Exception as e:
                 logging.error(f"通知老師失敗: {e}")
 
-def create_ritual_prices_flex():
-    """產生法事項目與費用的 Flex Message (加入返回主選單按鈕)"""
-    contents = [
-        FlexText(text='法事項目與費用', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
-    ]
-    for item, prices in ritual_prices_info.items():
-        price_texts = []
-        if "single" in prices:
-            price_texts.append(f"NT$ {prices['single']} / 份")
-        if "combo" in prices:
-             price_texts.append(f"(三合一/一條龍: 三份 NT$ {prices['combo']})")
-
-        contents.extend([
-            FlexSeparator(margin='lg'),
-            FlexText(text=item, weight='bold', size='md', margin='md'),
-            FlexText(text=" ".join(price_texts), size='sm', color='#555555', wrap=True)
-        ])
-
-    if "冤親債主/補桃花/補財庫" in ritual_prices_info and "combo" in ritual_prices_info["冤親債主/補桃花/補財庫"]:
-         contents.append(FlexSeparator(margin='lg'))
-         contents.append(FlexText(text='⚜️ 三合一/一條龍包含：冤親債主、補桃花、補財庫。', size='sm', color='#888888', wrap=True, margin='md'))
-
-    contents.append(FlexSeparator(margin='xl'))
-    # *** 加入按鈕到 Footer ***
-    footer_buttons = [
-        FlexButton(
-            action={'type': 'message', 'label': '了解匯款資訊', 'text': '匯款資訊'},
-            style='primary',
-            color='#8C6F4E',
-            height='sm',
-            margin='md'
-        ),
-        FlexSeparator(margin='md'), # 分隔線
-        FlexButton(
-            action=create_return_to_menu_button().as_dict(), # 使用輔助函式產生返回按鈕的 action
-            style='link', # 使用 link 樣式
-            height='sm',
-            color='#555555' # 深灰色文字
-        )
-    ]
-
-    bubble = FlexBubble(
-        body=FlexBox(
-            layout='vertical',
-            contents=contents
-        ),
-        footer=FlexBox( # 新增 Footer
-             layout='vertical',
-             spacing='sm',
-             contents=footer_buttons
-        ),
-         styles={'body': {'backgroundColor': '#F9F9F9'}, 'footer': {'separator': True}} # 淺灰色背景
-    )
-    return FlexMessage(alt_text='法事項目與費用', contents=bubble)
+# --- 輔助函數：建立法事選擇 Flex Message ---
+def create_ritual_selection_message(user_id):
+    buttons = []; ritual_items = ["冤親債主 (個人)", "補桃花 (個人)", "補財庫 (個人)", "三合一 (個人)", "冤親債主 (祖先)", "補桃花 (祖先)", "補財庫 (祖先)", "三合一 (祖先)"]
+    current_selection = user_states.get(user_id, {}).get("data", {}).get("selected_rituals", [])
+    for item in ritual_items:
+        price = SERVICE_FEES.get(item, "洽詢"); label_with_price = f"{item} (NT${price})" if isinstance(price, int) else f"{item} ({price})"
+        is_selected = item in current_selection; button_label = f"✅ {label_with_price}" if is_selected else label_with_price; button_style = 'secondary' if is_selected else 'primary'
+        ritual_postback_data = json.dumps({"action": "select_ritual_item", "ritual": item})
+        if len(ritual_postback_data.encode('utf-8')) <= 300: buttons.append(FlexButton(action=PostbackAction(label=button_label, data=ritual_postback_data, display_text=f"選擇法事：{item}"), style=button_style, color='#A67B5B' if not is_selected else '#DDDDDD', margin='sm', height='sm'))
+        else: app.logger.warning(f"法事項目按鈕 Postback data 過長: {ritual_postback_data}")
+    confirm_data = json.dumps({"action": "confirm_rituals"})
+    if len(confirm_data.encode('utf-8')) <= 300: buttons.append(FlexButton(action=PostbackAction(label='完成選擇，計算總價', data=confirm_data, display_text='完成選擇'), style='primary', color='#4CAF50', margin='lg', height='sm'))
+    back_button_data = json.dumps({"action": "show_main_menu"})
+    if len(back_button_data.encode('utf-8')) <= 300: buttons.append(FlexButton(action=PostbackAction(label='返回主選單', data=back_button_data, display_text='返回'), style='secondary', height='sm', margin='md'))
+    else: app.logger.error("Back button data too long for ritual selection!")
+    selected_text = "您目前已選擇：\n" + "\n".join(f"- {r}" for r in current_selection) if current_selection else "請點擊下方按鈕選擇法事項目："
+    bubble = FlexBubble(header=FlexBox(layout='vertical', contents=[FlexText(text='法事', weight='bold', size='lg', align='center', color='#B28E49')]), body=FlexBox(layout='vertical', spacing='md', contents=[FlexText(text=selected_text, wrap=True, size='sm', margin='md'), FlexSeparator(margin='lg'), *buttons]))
+    return FlexMessage(alt_text='請選擇法事項目', contents=bubble)
 
 # 處理預約請求
 def handle_booking_request(user_id, service_name_or_list, total_price=None, reply_token=None):
