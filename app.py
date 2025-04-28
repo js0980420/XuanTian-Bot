@@ -309,10 +309,11 @@ def handle_text_message(event):
             reply_content = create_main_menu_message() # 準備主選單
             if user_id in user_states: app.logger.info(f"Clearing state for user {user_id} after consultation info submission."); del user_states[user_id]
 
-   elif text_lower == "問事" or text_lower == "命理諮詢":
+    elif text_lower == "問事" or text_lower == "命理諮詢":
         app.logger.info(f"User {user_id} triggered consultation keyword.")
         # *** 修改處：直接準備包含所有須知的說明文字 ***
         consultation_info_text = """【問事/命理諮詢須知】
+
 問事費用：NT$600 (不限制時間與問題，但一定要詳細！)
 
 請準備以下資訊，並直接在此聊天室中一次提供：
@@ -328,7 +329,8 @@ def handle_text_message(event):
 🌟 銀行：822 中國信託
 🌟 帳號：510540490990
 
-感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。資料留完後請耐心等待，通常三天內會完成回覆，感恩🙏
+感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。資料留完後請耐心等待，通常三天內會完成回覆，感恩🙏"""
+        
         reply_content = TextMessage(text=consultation_info_text)
         # (移除了附加 QuickReply 的部分)
     elif text_lower in ["法事", "預約法事", "法會", "解冤親", "補財庫", "補桃花"]:
