@@ -130,51 +130,6 @@ def create_main_services_flex():
     )
     return FlexMessage(alt_text='主要服務項目', contents=bubble)
 
-def create_ritual_selection_message(user_id):
-    if user_id not in user_states or user_states[user_id].get("state") != "selecting_rituals":
-        user_states[user_id] = {"state": "selecting_rituals", "data": {"selected_rituals": []}}
-    
-    selected_rituals = user_states[user_id]["data"]["selected_rituals"]
-    buttons = []
-    for ritual, price in SERVICE_FEES.items():
-        is_selected = ritual in selected_rituals
-        label = f"✅ {ritual} (NT${price})" if is_selected else f"{ritual} (NT${price})"
-        buttons.append(FlexButton(
-            action=PostbackAction(
-                label=label,
-                data=json.dumps({"action": "select_ritual_item", "ritual": ritual}),
-                display_text=f"選擇：{ritual}"
-            ),
-            style='secondary' if is_selected else 'primary',
-            color='#A67B5B' if not is_selected else '#DDDDDD',
-            margin='sm',
-            height='sm'
-        ))
-    
-    bubble = FlexBubble(
-        header=FlexBox(
-            layout='vertical',
-            contents=[FlexText(text='法事選擇', weight='bold', size='lg', color='#B28E49', align='center')]
-        ),
-        body=FlexBox(
-            layout='vertical',
-            contents=[
-                FlexText(text='請選擇法事項目：', size='sm', margin='md'),
-                FlexSeparator(margin='md'),
-                *buttons,
-                FlexButton(
-                    action=PostbackAction(label='完成選擇', data=json.dumps({"action": "confirm_rituals"})),
-                    style='primary',
-                    color='#8C6F4E',
-                    margin='md',
-                    height='sm'
-                ),
-                FlexButton(action=create_return_to_menu_button(), style='link', height='sm', color='#555555')
-            ]
-        )
-    )
-    return FlexMessage(alt_text='請選擇法事項目', contents=bubble)
-
 def create_booking_submenu_flex():
     bubble = FlexBubble(
         header=FlexBox(
