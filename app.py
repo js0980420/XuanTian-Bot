@@ -308,7 +308,7 @@ def handle_text_message(event):
             reply_token = None # 避免後續重複使用 Reply Token
             reply_content = create_main_menu_message() # 準備主選單
             if user_id in user_states: app.logger.info(f"Clearing state for user {user_id} after consultation info submission."); del user_states[user_id]
-    elif text_lower == "如何預約"：
+    elif text_lower == "如何預約":
     # *** 修改處：直接在此處建立預約子選單 Flex Message ***
         try:
             submenu_buttons = []
