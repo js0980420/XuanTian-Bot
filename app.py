@@ -261,7 +261,7 @@ def create_ritual_prices_flex():
     return FlexMessage(alt_text='法事項目與費用', contents=bubble)
 
 def create_how_to_book_flex():
-    """產生如何預約的 Flex Message 選單（簡短版，含多功能按鈕）"""
+    """產生如何預約的 Flex Message 選單（簡短版，含多功能按鈕，分段排版）"""
     bubble = FlexBubble(
         header=FlexBox(
             layout='vertical',
@@ -274,7 +274,7 @@ def create_how_to_book_flex():
             spacing='md',
             contents=[
                 FlexText(
-                    text='【如何預約】\n感謝您的信任與支持！🙏\n請直接點選下方服務按鈕，依照指示操作即可完成預約。\n問事通常三天內會回覆，感恩您的耐心等候。\n💡 每週五會發送【改運小妙招】給您，敬請期待！\n如有疑問，歡迎隨時詢問，我們很樂意為您服務！🌟',
+                    text='【如何預約】\n感謝您的信任與支持！🙏\n請直接點選下方服務按鈕，依照指示操作即可完成預約。\n\n✅ 問事通常三天內會回覆，感恩您的耐心等候。\n\n✅ 每週五會發送【改運小妙招】給您，敬請期待！\n\n如有疑問，歡迎隨時詢問，我們很樂意為您服務！🌟',
                     wrap=True, size='sm', color='#333333'
                 )
             ]
@@ -409,10 +409,21 @@ def le_message(event):
     with ApiClient(configuration) as api_client:
         line_bot_api = MessagingApi(api_client)
 
+        # --- 問事流程優先 ---
+        if user_message in ["問事", "命理諮詢"]:
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[TextMessage(text=CONSULTATION_INFO_TEXT)]
+                )
+            )
+            notify_teacher(f"有使用者查詢問事/命理諮詢須知：{user_id}")
+            return
+
         # --- 根據關鍵字回覆 ---
         if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
             reply_content = create_main_services_flex() # 主選單，不加返回按鈕
-        elif user_message in ["預約", "預約諮詢", "問事", "命理問事", "算命", "如何預約"]:
+        elif user_message in ["預約", "預約諮詢", "命理問事", "算命", "如何預約"]:
             # *** 使用 Template Message 回覆 ***
             reply_content = create_how_to_book_flex()
             notify_teacher("有使用者查詢了如何預約/問事須知。")
@@ -420,13 +431,7 @@ def le_message(event):
             reply_content = create_ritual_prices_flex() # Flex Message 已加入返回按鈕
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
             # *** 使用 Template Message 回覆 ***
-            payment_text = f"""【匯款資訊】
-🌟 匯款帳號：
-銀行代碼：{payment_details['bank_code']}
-銀行名稱：{payment_details['bank_name']}
-帳號：{payment_details['account_number']}
-
-（匯款後請告知末五碼以便核對）"""
+            payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
             reply_content = create_text_with_menu_button(payment_text, alt_text="匯款資訊")
         elif user_message == "最新消息":
             reply_content = create_text_with_menu_button(other_services_keywords["最新消息"], alt_text="最新消息")
@@ -463,19 +468,6 @@ def le_message(event):
                 error_text = "Google Calendar 設定不完整，無法查詢預約時間。"
                 # *** 使用 Template Message 回覆 ***
                 reply_content = create_text_with_menu_button(error_text, alt_text="設定錯誤")
-
-        # --- 問事流程 ---
-        elif user_message in ["問事", "命理諮詢"]:
-            with ApiClient(configuration) as api_client:
-                line_bot_api = MessagingApi(api_client)
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[TextMessage(text=CONSULTATION_INFO_TEXT)]
-                    )
-                )
-                notify_teacher(f"有使用者查詢問事/命理諮詢須知：{user_id}")
-            return
 
         else:
             # --- 預設回覆 (如果需要，也可以加上返回按鈕) ---
