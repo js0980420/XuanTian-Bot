@@ -209,7 +209,8 @@ def create_main_services_flex():
 def create_ritual_prices_flex():
     """產生法事項目與費用的 Flex Message (加入返回主選單按鈕)"""
     contents = [
-        FlexText(text='法事項目與費用', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md')
+        FlexText(text='法事項目與費用', weight='bold', size='xl', color='#5A3D1E', align='center', margin='md'),
+        FlexText(text='\n【法事項目分類說明】\n官司、考運、身體、小人 → 冤親\n財運、事業、防破財 → 補財庫\n感情、貴人、客戶、桃花 → 補桃花\n\n如有特別因素請私訊老師👋', size='sm', color='#888888', wrap=True, margin='md')
     ]
     for item, prices in ritual_prices_info.items():
         price_texts = []
@@ -418,7 +419,6 @@ def le_message(event):
                     messages=[TextMessage(text=CONSULTATION_INFO_TEXT)]
                 )
             )
-            notify_teacher(f"有使用者查詢問事/命理諮詢須知：{user_id}")
             return
 
         # --- 根據關鍵字回覆 ---
@@ -427,7 +427,6 @@ def le_message(event):
         elif user_message in ["預約", "預約諮詢", "命理問事", "算命", "如何預約"]:
             # *** 使用 Template Message 回覆 ***
             reply_content = create_how_to_book_flex()
-            notify_teacher("有使用者查詢了如何預約/問事須知。")
         elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
             reply_content = create_ritual_prices_flex() # Flex Message 已加入返回按鈕
         elif user_message in ["匯款", "匯款資訊", "帳號"]:
@@ -459,7 +458,6 @@ def le_message(event):
                     calendar_response_text = "查詢可預約時間功能開發中..." # 暫時回覆
                     # *** 使用 Template Message 回覆 ***
                     reply_content = create_text_with_menu_button(calendar_response_text, alt_text="查詢可預約時間")
-                    notify_teacher("有使用者正在查詢可預約時間。")
                 except Exception as e:
                     logging.error(f"Error accessing Google Calendar: {e}")
                     error_text = "查詢可預約時間失敗，請稍後再試。"
@@ -469,6 +467,23 @@ def le_message(event):
                 error_text = "Google Calendar 設定不完整，無法查詢預約時間。"
                 # *** 使用 Template Message 回覆 ***
                 reply_content = create_text_with_menu_button(error_text, alt_text="設定錯誤")
+
+        # 3. 收驚、卜卦、風水：新增簡單說明訊息，請客人詳細描述問題，結尾加三天內回覆提醒與返回主選單按鈕。
+        if user_message == "收驚":
+            reply_content = create_text_with_menu_button(
+                "【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
+                alt_text="收驚說明"
+            )
+        elif user_message == "卜卦":
+            reply_content = create_text_with_menu_button(
+                "【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
+                alt_text="卜卦說明"
+            )
+        elif user_message == "風水":
+            reply_content = create_text_with_menu_button(
+                "【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
+                alt_text="風水說明"
+            )
 
         else:
             # --- 預設回覆 (如果需要，也可以加上返回按鈕) ---
@@ -593,38 +608,22 @@ def handle_postback(event):
                     confirmation_text += "\n法事將於下個月由老師擇日統一進行。\n"
                     confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n"
                     confirmation_text += "老師通常三天內會回覆您，感恩您的耐心等候。\n"
-                    confirmation_text += "\n銀行代碼：{payment_details['bank_code']}\n"
-                    confirmation_text += "銀行名稱：{payment_details['bank_name']}\n"
-                    confirmation_text += "帳號：{payment_details['account_number']}\n"
+                    confirmation_text += f"\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n"
                     confirmation_text += "\n還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！"
-                    
-                    # 通知老師 (更結構化的資訊)
-                    notification_details = {
-                        "user_id": user_id,
-                        "items": final_item_list,
-                        "total_price": total_price,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    # 轉換為 JSON 字串發送，方便後續處理
-                    notify_teacher(f"【法事預約確認】\n{json.dumps(notification_details, ensure_ascii=False, indent=2)}")
-                    
-                    # 發送確認訊息給用戶
+                    # 回覆訊息時，附加返回主選單按鈕
                     try:
                         line_bot_api.reply_message(
                             ReplyMessageRequest(
                                 reply_token=event.reply_token,
                                 messages=[
                                     TextMessage(text=confirmation_text),
-                                    create_main_services_flex()  # 附加主選單
+                                    create_return_to_menu_button() # 直接加一個 MessageAction 按鈕
                                 ]
                             )
                         )
-                        
-                        # 清除狀態
                         if user_id in user_states:
                             del user_states[user_id]
-                            
-                        return  # 直接返回，避免後續的回覆處理
+                        return
                     except Exception as e:
                         logging.error(f"回覆確認訊息時出錯: {e}")
             else:
@@ -640,7 +639,6 @@ def handle_follow(event):
     user_id = event.source.user_id
     followed_users.add(user_id) # 將新用戶 ID 加入集合
     logging.info(f"User {user_id} followed the bot. Current followed users: {len(followed_users)}")
-    notify_teacher(f"有新使用者加入好友：{user_id}")
 
     if not channel_access_token:
         logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot send follow message.")
