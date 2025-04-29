@@ -51,7 +51,7 @@ app.logger.setLevel(logging.INFO)
 # --- 基本設定 ---
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', '')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', '')
-teacher_user_id = os.getenv('TEACHER_USER_ID', '')
+#teacher_user_id = os.getenv('TEACHER_USER_ID', '')
 
 # --- 服務費用設定 ---
 SERVICE_FEES = {
