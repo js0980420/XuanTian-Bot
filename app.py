@@ -241,7 +241,7 @@ def create_ritual_prices_flex():
         ),
         FlexSeparator(margin='md'), # 分隔線
         FlexButton(
-            action=create_return_to_menu_button().as_dict(), # 使用輔助函式產生返回按鈕的 action
+            action=create_return_to_menu_button(), # 直接傳入 MessageAction 物件
             style='link', # 使用 link 樣式
             height='sm',
             color='#555555' # 深灰色文字
@@ -263,7 +263,7 @@ def create_ritual_prices_flex():
     return FlexMessage(alt_text='法事項目與費用', contents=bubble)
 
 def create_how_to_book_flex():
-    """產生如何預約的 Flex Message 選單"""
+    """產生如何預約的 Flex Message 選單（簡短版，含多功能按鈕）"""
     bubble = FlexBubble(
         header=FlexBox(
             layout='vertical',
@@ -275,7 +275,10 @@ def create_how_to_book_flex():
             layout='vertical',
             spacing='md',
             contents=[
-                FlexText(text=how_to_book_instructions, wrap=True, size='sm', color='#333333')
+                FlexText(
+                    text='【如何預約】\n感謝您的信任與支持！🙏\n請直接點選下方服務按鈕，依照指示操作即可完成預約。\n問事通常三天內會回覆，感恩您的耐心等候。\n💡 每週五會發送【改運小妙招】給您，敬請期待！\n如有疑問，歡迎隨時詢問，我們很樂意為您服務！🌟',
+                    wrap=True, size='sm', color='#333333'
+                )
             ]
         ),
         footer=FlexBox(
@@ -295,13 +298,19 @@ def create_how_to_book_flex():
                     height='sm'
                 ),
                 FlexButton(
-                    action=MessageAction(label='最新消息', text='最新消息'),
+                    action=MessageAction(label='收驚', text='收驚'),
                     style='secondary',
                     color='#EFEBE4',
                     height='sm'
                 ),
                 FlexButton(
-                    action=MessageAction(label='探索自我 (測驗)', text='探索自我'),
+                    action=MessageAction(label='卜卦', text='卜卦'),
+                    style='secondary',
+                    color='#EFEBE4',
+                    height='sm'
+                ),
+                FlexButton(
+                    action=MessageAction(label='風水', text='風水'),
                     style='secondary',
                     color='#EFEBE4',
                     height='sm'
