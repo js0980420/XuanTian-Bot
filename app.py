@@ -370,7 +370,7 @@ def handle_text_message(event):
                 styles={'header': {'backgroundColor': '#EFEBE4'}, 'footer': {'separator': True}}
             )
             reply_content = FlexMessage(alt_text='預約服務選項', contents=bubble)
-            notify_teacher("有使用者查詢了預約服務選項。") # 保留通知
+            #notify_teacher("有使用者查詢了預約服務選項。") # 保留通知
 
         except Exception as e:
             app.logger.error(f"建立預約子選單時發生錯誤: {e}")
