@@ -30,7 +30,8 @@ from linebot.v3.messaging import (
     # --- 匯入 URIAction 和 MessageAction ---
     URIAction, MessageAction, # MessageAction 用於按鈕觸發文字訊息
     # --- 匯入 TemplateMessage 和 ButtonsTemplate ---
-    TemplateMessage, ButtonsTemplate
+    TemplateMessage, ButtonsTemplate,
+    PostbackAction
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -231,7 +232,7 @@ def create_ritual_prices_flex():
     # *** 加入按鈕到 Footer ***
     footer_buttons = [
         FlexButton(
-            action={'type': 'message', 'label': '了解匯款資訊', 'text': '匯款資訊'},
+            action=MessageAction(label='了解匯款資訊', text='匯款資訊'),
             style='primary',
             color='#8C6F4E',
             height='sm',
@@ -588,13 +589,14 @@ def handle_postback(event):
                     for item in final_item_list:
                         price = SERVICE_FEES.get(item, "洽詢")
                         confirmation_text += f"• {item} - NT${price}\n"
-                    
                     confirmation_text += f"\n總費用：NT${total_price}\n"
                     confirmation_text += "\n法事將於下個月由老師擇日統一進行。\n"
-                    confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n\n"
-                    confirmation_text += f"銀行代碼：{payment_details['bank_code']}\n"
-                    confirmation_text += f"銀行名稱：{payment_details['bank_name']}\n"
-                    confirmation_text += f"帳號：{payment_details['account_number']}\n"
+                    confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n"
+                    confirmation_text += "老師通常三天內會回覆您，感恩您的耐心等候。\n"
+                    confirmation_text += "\n銀行代碼：{payment_details['bank_code']}\n"
+                    confirmation_text += "銀行名稱：{payment_details['bank_name']}\n"
+                    confirmation_text += "帳號：{payment_details['account_number']}\n"
+                    confirmation_text += "\n還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！"
                     
                     # 通知老師 (更結構化的資訊)
                     notification_details = {
@@ -849,11 +851,10 @@ def create_ritual_selection_message(user_id):
         label = f"{checked}{item} (NT${SERVICE_FEES.get(item,'洽詢')})"
         buttons.append(
             FlexButton(
-                action={
-                    "type": "postback",
-                    "label": label,
-                    "data": json.dumps({"action": "select_ritual_item", "ritual": item}, ensure_ascii=False)
-                },
+                action=PostbackAction(
+                    label=label,
+                    data=json.dumps({"action": "select_ritual_item", "ritual": item}, ensure_ascii=False)
+                ),
                 style="primary" if item in selected else "secondary",
                 color="#8C6F4E" if item in selected else "#EFEBE4",
                 height="sm"
@@ -861,11 +862,10 @@ def create_ritual_selection_message(user_id):
         )
     # 完成選擇按鈕
     buttons.append(FlexButton(
-        action={
-            "type": "postback",
-            "label": "完成選擇、計算價格",
-            "data": json.dumps({"action": "confirm_rituals"}, ensure_ascii=False)
-        },
+        action=PostbackAction(
+            label="完成選擇、計算價格",
+            data=json.dumps({"action": "confirm_rituals"}, ensure_ascii=False)
+        ),
         style="primary",
         color="#5A3D1E",
         height="sm"
