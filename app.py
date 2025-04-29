@@ -112,27 +112,25 @@ payment_details = {
     "account_number": "510540490990"
 }
 
-# 命理問事須知/如何預約
-how_to_book_instructions = """【如何預約/問事須知】
-歡迎來到宇宙玄天院！您可以透過以下按鈕選擇服務。
+# --- 問事/命理諮詢須知（與圖片完全一致） ---
+CONSULTATION_INFO_TEXT = '''【問事/命理諮詢須知】
 
-• **問事：** 進行命理諮詢，需要您提供生日時辰。
-• **法事：** 預約補財庫、煙供等法事項目。
-• **最新消息：** 查看本院最新公告與活動。
-• **探索自我：** 透過測驗了解您的天賦命格。
+問事費用：NT$600 (不限制時間與問題，但一定要詳細！)
 
-💡 每週五我們將會發送【改運小妙招】給您，敬請期待！
+請準備以下資訊，並直接在此聊天室中一次提供：
+1. ✅姓名
+2. ✅國曆生日 (年/月/日，請提供身分證上的出生年月日)
+3. ✅出生時間 (請提供幾點幾分，例如 14:30 或 23:15，若不確定請告知大概時段如「晚上」或「接近中午」)
+4. ✅想詢問的問題 (請盡量詳細描述人、事、時、地、物，越詳細越好)
+5. ✅照片需求：
+   🔵問感情：請提供雙方姓名、生日、合照。
+   🔵問其他事情：請提供個人清晰的雙手照片。
 
-若您想進行**命理問事**，請點擊下方「問事」按鈕並依照指示提供資訊：
-1. **國曆生日** (年/月/日)
-2. **出生時間** (24小時制)
-   * 請直接告知出生時間數字，無需自行換算。
-   * 時辰參考：
-     23-01 子 | 01-03 丑 | 03-05 寅 | 05-07 卯
-     07-09 辰 | 09-11 巳 | 11-13 午 | 13-15 未
-     15-17 申 | 17-19 酉 | 19-21 戌 | 21-23 亥
+✅匯款資訊：
+🌟銀行：822 中國信託
+🌟帳號：510540490990
 
-請將上述資訊，連同您想問的問題，一併發送給我們。老師會盡快與您聯繫！"""
+感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。資料留完後請耐心等待，通常三天內會完成回覆，感恩🙏'''
 
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
@@ -465,6 +463,19 @@ def le_message(event):
                 error_text = "Google Calendar 設定不完整，無法查詢預約時間。"
                 # *** 使用 Template Message 回覆 ***
                 reply_content = create_text_with_menu_button(error_text, alt_text="設定錯誤")
+
+        # --- 問事流程 ---
+        elif user_message in ["問事", "命理諮詢"]:
+            with ApiClient(configuration) as api_client:
+                line_bot_api = MessagingApi(api_client)
+                line_bot_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=event.reply_token,
+                        messages=[TextMessage(text=CONSULTATION_INFO_TEXT)]
+                    )
+                )
+                notify_teacher(f"有使用者查詢問事/命理諮詢須知：{user_id}")
+            return
 
         else:
             # --- 預設回覆 (如果需要，也可以加上返回按鈕) ---
@@ -825,6 +836,79 @@ def setup_rich_menu():
         except Exception as e:
             logging.error(f"Error setting up rich menu: {e}")
             logging.error(traceback.format_exc())
+
+# --- 法事項目與價格對應表 ---
+SERVICE_FEES = {
+    "冤親債主（個人）": 680,
+    "補桃花（個人）": 680,
+    "補財庫（個人）": 680,
+    "三合一（個人）": 1800,
+    "祖先": 1800
+}
+
+# --- 法事選擇多選選單產生函式 ---
+def create_ritual_selection_message(user_id):
+    """產生法事多選選單（含已選項目打勾）"""
+    selected = set(user_states.get(user_id, {}).get("data", {}).get("selected_rituals", []))
+    all_items = ["冤親債主（個人）", "補桃花（個人）", "補財庫（個人）", "三合一（個人）", "祖先"]
+    buttons = []
+    for item in all_items:
+        checked = "✅" if item in selected else ""
+        label = f"{checked}{item} (NT${SERVICE_FEES.get(item,'洽詢')})"
+        buttons.append(
+            FlexButton(
+                action={
+                    "type": "postback",
+                    "label": label,
+                    "data": json.dumps({"action": "select_ritual_item", "ritual": item}, ensure_ascii=False)
+                },
+                style="primary" if item in selected else "secondary",
+                color="#8C6F4E" if item in selected else "#EFEBE4",
+                height="sm"
+            )
+        )
+    # 完成選擇按鈕
+    buttons.append(FlexButton(
+        action={
+            "type": "postback",
+            "label": "完成選擇、計算價格",
+            "data": json.dumps({"action": "confirm_rituals"}, ensure_ascii=False)
+        },
+        style="primary",
+        color="#5A3D1E",
+        height="sm"
+    ))
+    # 返回主選單
+    buttons.append(FlexButton(
+        action=create_return_to_menu_button(),
+        style="link",
+        height="sm",
+        color="#555555"
+    ))
+    bubble = FlexBubble(
+        header=FlexBox(
+            layout="vertical",
+            contents=[FlexText(text="預約法事", weight="bold", size="xl", color="#5A3D1E", align="center")]
+        ),
+        body=FlexBox(
+            layout="vertical",
+            spacing="md",
+            contents=[FlexText(text="請勾選您要預約的法事項目，可複選：", size="sm", color="#333333")] + buttons
+        ),
+        styles={"header": {"backgroundColor": "#EFEBE4"}, "body": {"paddingAll": "lg"}}
+    )
+    return FlexMessage(alt_text="預約法事", contents=bubble)
+
+# --- 法事總價計算（含三合一自動合併）---
+def calculate_total_price(selected_rituals):
+    items = set(selected_rituals)
+    # 三合一自動合併
+    single_set = {"冤親債主（個人）", "補桃花（個人）", "補財庫（個人）"}
+    if single_set.issubset(items):
+        items -= single_set
+        items.add("三合一（個人）")
+    total = sum(SERVICE_FEES.get(item, 0) for item in items)
+    return total, list(items)
 
 # --- 主程式入口 ---
 if __name__ == "__main__":
