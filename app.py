@@ -201,9 +201,6 @@ def handle_booking_request(user_id, service_name_or_list, total_price=None, repl
     if is_ritual_summary: service_display = "\n".join([f"- {item}" for item in service_name_or_list]) if service_name_or_list else "未選擇項目"; price_display = f"NT${total_price}" if total_price is not None else "計算錯誤"; log_service = f"法事組合 ({len(service_name_or_list)}項)"
     else: service_display = service_name_or_list; price_display = SERVICE_FEES.get(service_name_or_list, "價格請洽老師"); log_service = service_name_or_list
     notification_base_text = (f"【服務請求】\n--------------------\n用戶ID: {user_id}\n服務項目:\n{service_display}\n費用: {price_display}\n--------------------")
-    if teacher_user_id:
-        try: push_notification_text = notification_base_text + "\n請老師確認並處理後續事宜。"; send_message(teacher_user_id, TextMessage(text=push_notification_text)); app.logger.info(f"服務請求通知已嘗試發送給老師 ({log_service})。")
-        except Exception as e: app.logger.error(f"錯誤：發送服務請求通知給老師失敗 ({log_service}): {e}"); app.logger.info("備份通知到日誌：\n" + notification_base_text + "\n（發送失敗，請查看日誌）")
     else: app.logger.warning(f"警告：未設定老師的 User ID..."); app.logger.info(notification_base_text + "\n（未設定老師ID，僅記錄日誌）")
     if is_ritual_summary:
         if not service_name_or_list: reply_text_to_user = "您尚未選擇任何法事項目。請重新操作。"
