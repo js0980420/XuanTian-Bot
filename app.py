@@ -444,20 +444,24 @@ def le_message(event):
         if "法事" in msg:
             reply_content.append(create_ritual_selection_message(user_id))
         if "問事" in msg or "命理" in msg:
+            unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！老師通常三天內會回覆您，如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
                 alt_text="服務結束提醒"
             ))
         if "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
+            link_rich_menu_to_user(user_id, "16633875")
             reply_content.append(create_how_to_book_flex())
         if "收驚" in msg:
+            unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text="【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
                 alt_text="服務結束提醒"
             ))
         if "卜卦" in msg:
+            unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text="【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
