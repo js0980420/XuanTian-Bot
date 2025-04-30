@@ -960,7 +960,7 @@ def get_default_rich_menu_id():
     try:
         with ApiClient(configuration) as api_client:
             line_bot_api = MessagingApi(api_client)
-            return line_bot_api.get_default_rich_menu_id().richMenuId
+            return line_bot_api.get_default_rich_menu_id().rich_menu_id
     except Exception as e:
         logging.error(f"獲取預設圖文選單ID失敗: {e}")
         # 返回固定的備用 ID
