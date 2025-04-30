@@ -136,8 +136,8 @@ CONSULTATION_INFO_TEXT = '''【問事/命理諮詢須知】
 
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
-    """產生返回主選單的 MessageAction 按鈕"""
-    return MessageAction(label='返回主選單', text='服務項目')
+    """產生返回主選單的 MessageAction 按鈕，改為跳到如何預約"""
+    return MessageAction(label='返回主選單', text='如何預約')
 
 # --- Flex Message 產生函式 ---
 
@@ -427,122 +427,90 @@ def le_message(event):
     """處理文字訊息"""
     user_message = event.message.text.strip() # 去除前後空白
     user_id = event.source.user_id # 取得使用者 ID (保留，可能未來其他地方會用到)
-    reply_content = None
+    reply_content = []
 
     # 檢查 Line Bot API 設定是否有效
     if not channel_access_token:
         logging.error("LINE_CHANNEL_ACCESS_TOKEN not found. Cannot reply.")
         return # 無法回覆
 
-    with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-
-        # --- 問事流程優先 ---
-        if user_message in ["問事", "命理諮詢"]:
-            # 回覆問事須知文字，並附加返回主選單按鈕
-            # reply_content = create_text_with_menu_button(CONSULTATION_INFO_TEXT, alt_text="問事須知") # 移除此行
-            # 注意：create_text_with_menu_button 限制文字 160 字，所以這裡可能只顯示部分內容
-            # 如果要顯示完整內容並加按鈕，需要改用 Flex Message 或分開回覆
-            # 為了確保完整顯示，我們分開回覆：
-            consultation_message = TextMessage(text=CONSULTATION_INFO_TEXT)
-            follow_up_message = TemplateMessage(
-                alt_text="還有需要什麼服務嗎？",
-                template=ButtonsTemplate(
-                    text="還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！", # 將詢問句移到這裡
-                    actions=[create_return_to_menu_button()]
-                )
+    msg = user_message.replace(' ', '').replace('　', '').lower()
+    if "法事" in msg:
+        # 回覆法事
+        reply_content.append(create_ritual_prices_flex())
+    if "問事" in msg or "命理" in msg:
+        # 回覆問事
+        reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
+        reply_content.append(TemplateMessage(
+            alt_text="還有需要什麼服務嗎？",
+            template=ButtonsTemplate(
+                text="還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！",
+                actions=[create_return_to_menu_button()]
             )
-            line_bot_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=event.reply_token,
-                    messages=[consultation_message, follow_up_message]
-                )
-            )
-            return # 已回覆，結束處理
-
-        # --- 根據關鍵字回覆 ---
-        if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
-            reply_content = create_main_services_flex() # 主選單，不加返回按鈕
-        elif user_message in ["預約", "預約諮詢", "命理問事", "算命", "如何預約"]:
-            # *** 使用 Template Message 回覆 ***
-            reply_content = create_how_to_book_flex()
-        elif user_message in ["法事", "法事項目", "價錢", "價格", "費用"]:
-            reply_content = create_ritual_prices_flex() # Flex Message 已加入返回按鈕
-        elif user_message in ["匯款", "匯款資訊", "帳號"]:
-            # *** 使用 Template Message 回覆 ***
-            payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
-            reply_content = create_text_with_menu_button(payment_text, alt_text="匯款資訊")
-        elif user_message == "最新消息":
-            reply_content = create_text_with_menu_button(other_services_keywords["最新消息"], alt_text="最新消息")
-        elif user_message == "探索自我":
-            # 這裡可以加上實際的測驗連結
-            explore_text = other_services_keywords["探索自我"].replace("[請在此處放入測驗連結]", "(測驗連結待提供)") 
-            reply_content = create_text_with_menu_button(explore_text, alt_text="探索自我")
-        elif user_message in other_services_keywords or user_message == "開運產品":
-             # 處理 "開運產品" 和字典中的其他關鍵字
-             keyword_to_lookup = user_message if user_message in other_services_keywords else "開運產品"
-             text_to_reply = other_services_keywords[keyword_to_lookup]
-             # *** 使用 Template Message 回覆 ***
-             reply_content = create_text_with_menu_button(text_to_reply, alt_text=keyword_to_lookup) # 使用關鍵字當 alt_text
-        elif "你好" in user_message or "hi" in user_message.lower() or "hello" in user_message.lower():
-             # *** 使用 Template Message 回覆 ***
-             hello_text = "您好！很高興為您服務。\n請問需要什麼協助？\n您可以輸入「服務項目」查看我們的服務選單。"
-             reply_content = create_text_with_menu_button(hello_text, alt_text="問候")
-
-        # --- 處理 Google Calendar 相關邏輯 (範例，需要您實作) ---
-        elif user_message == "查詢可預約時間":
-            if google_calendar_id and google_credentials_json_path:
-                try:
-                    # ... (省略 Google Calendar API 呼叫邏輯) ...
-                    calendar_response_text = "查詢可預約時間功能開發中..." # 暫時回覆
-                    # *** 使用 Template Message 回覆 ***
-                    reply_content = create_text_with_menu_button(calendar_response_text, alt_text="查詢可預約時間")
-                except Exception as e:
-                    logging.error(f"Error accessing Google Calendar: {e}")
-                    error_text = "查詢可預約時間失敗，請稍後再試。"
-                    # *** 使用 Template Message 回覆 ***
-                    reply_content = create_text_with_menu_button(error_text, alt_text="查詢錯誤")
-            else:
-                error_text = "Google Calendar 設定不完整，無法查詢預約時間。"
-                # *** 使用 Template Message 回覆 ***
-                reply_content = create_text_with_menu_button(error_text, alt_text="設定錯誤")
-
-        # 3. 收驚、卜卦、風水：新增簡單說明訊息，請客人詳細描述問題，結尾加三天內回覆提醒與返回主選單按鈕。
-        if user_message == "收驚":
-            reply_content = create_text_with_menu_button(
-                "【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
-                alt_text="收驚說明"
-            )
-        elif user_message == "卜卦":
-            reply_content = create_text_with_menu_button(
-                "【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
-                alt_text="卜卦說明"
-            )
-        elif user_message == "風水":
-            reply_content = create_text_with_menu_button(
-                "【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。",
-                alt_text="風水說明"
-            )
-
-        else:
-            # --- 預設回覆 --- 
-            default_reply_text = "老師通常三天內會回覆您，感恩您的耐心等候。"
-            reply_content = create_text_with_menu_button(default_reply_text, alt_text="收到訊息")
-            # # --- 將未知訊息轉發給老師 (範例) ---
-            # # notify_teacher(f"收到無法自動處理的訊息：\n\n{user_message}")
-            # pass # 目前設定為不回覆未知訊息
-
-        # --- 發送回覆 --- (處理所有設定 reply_content 的情況)
-        if reply_content:
+        ))
+    if "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
+        # 回覆如何預約
+        reply_content.append(create_how_to_book_flex())
+    if "收驚" in msg:
+        reply_content.append(TextMessage(text="【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+        reply_content.append(create_how_to_book_flex())
+    if "卜卦" in msg:
+        reply_content.append(TextMessage(text="【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+        reply_content.append(create_how_to_book_flex())
+    if "風水" in msg:
+        reply_content.append(TextMessage(text="【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+        reply_content.append(create_how_to_book_flex())
+    if "匯款" in msg or "匯款資訊" in msg or "帳號" in msg:
+        payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
+        reply_content.append(create_text_with_menu_button(payment_text, alt_text="匯款資訊"))
+    if "最新消息" in msg:
+        reply_content.append(create_text_with_menu_button(other_services_keywords["最新消息"], alt_text="最新消息"))
+    if "探索自我" in msg or "順流致富" in msg:
+        explore_text = other_services_keywords["探索自我"].replace("[請在此處放入測驗連結]", "(測驗連結待提供)")
+        reply_content.append(create_text_with_menu_button(explore_text, alt_text="探索自我"))
+    if "開運產品" in msg or "開運物" in msg:
+        text_to_reply = other_services_keywords["開運產品"]
+        reply_content.append(create_text_with_menu_button(text_to_reply, alt_text="開運產品"))
+    if "課程" in msg:
+        reply_content.append(create_text_with_menu_button(other_services_keywords["課程介紹"], alt_text="課程介紹"))
+    if "ig" in msg:
+        reply_content.append(create_text_with_menu_button(other_services_keywords["IG"], alt_text="IG"))
+    if "抖音" in msg:
+        reply_content.append(create_text_with_menu_button(other_services_keywords["抖音"], alt_text="抖音"))
+    if "運勢文" in msg:
+        reply_content.append(create_text_with_menu_button(other_services_keywords["運勢文"], alt_text="運勢文"))
+    if "你好" in msg or "hi" in msg or "hello" in msg:
+        hello_text = "您好！很高興為您服務。\n請問需要什麼協助？\n您可以輸入「服務項目」查看我們的服務選單。"
+        reply_content.append(create_text_with_menu_button(hello_text, alt_text="問候"))
+    if "服務" in msg or "服務項目" in msg or "功能" in msg or "選單" in msg or "menu" in msg:
+        reply_content.append(create_main_services_flex())
+    if "查詢可預約時間" in msg:
+        if google_calendar_id and google_credentials_json_path:
             try:
-                line_bot_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=event.reply_token,
-                        messages=[reply_content] # 發送單一訊息物件 (Flex 或 Template)
-                    )
-                )
+                calendar_response_text = "查詢可預約時間功能開發中..."
+                reply_content.append(create_text_with_menu_button(calendar_response_text, alt_text="查詢可預約時間"))
             except Exception as e:
-                 logging.error(f"Error sending reply message: {e}")
+                logging.error(f"Error accessing Google Calendar: {e}")
+                error_text = "查詢可預約時間失敗，請稍後再試。"
+                reply_content.append(create_text_with_menu_button(error_text, alt_text="查詢錯誤"))
+        else:
+            error_text = "Google Calendar 設定不完整，無法查詢預約時間。"
+            reply_content.append(create_text_with_menu_button(error_text, alt_text="設定錯誤"))
+
+    # 如果沒有任何關鍵字被觸發，回覆預設訊息
+    if not reply_content:
+        reply_content = [TextMessage(text="老師三天內會親自回覆您，還有什麼需要幫忙的地方嗎？"), create_how_to_book_flex()]
+
+    # --- 發送回覆 ---
+    try:
+        line_bot_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=event.reply_token,
+                messages=reply_content
+            )
+        )
+    except Exception as e:
+        logging.error(f"Error sending reply message: {e}")
 
 # --- 處理 Postback 事件（包含所有按鈕回調） ---
 @handler.add(PostbackEvent)
@@ -655,7 +623,7 @@ def handle_postback(event):
                                 reply_token=event.reply_token,
                                 messages=[
                                     TextMessage(text=confirmation_text),
-                                    create_return_to_menu_button() # 直接加一個 MessageAction 按鈕
+                                    create_how_to_book_flex()
                                 ]
                             )
                         )
