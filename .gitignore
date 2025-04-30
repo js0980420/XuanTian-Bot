@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+
+# 環境變數
+.env
+.env.*
+
+# VSCode
+.vscode/
+
+# 測試/暫存
+*.log
+*.sqlite3
+*.db
+.DS_Store
+*.swp
+*.bak
+*.tmp
+
+# 憑證/金鑰
+*.pem
+*.key
+*.crt
+*.json
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 其他
+.idea/
+*.iml
+
+# 忽略 node_modules（如果有前端）
+node_modules/ 

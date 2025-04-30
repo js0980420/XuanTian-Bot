@@ -55,15 +55,23 @@ load_dotenv()
 channel_access_token = os.getenv('LINE_CHANNEL_ACCESS_TOKEN', 'YOUR_CHANNEL_ACCESS_TOKEN')
 channel_secret = os.getenv('LINE_CHANNEL_SECRET', 'YOUR_CHANNEL_SECRET') # 請確保已在 Render 加入此變數
 
+# LINE Message API 相關設定
+line_bot_api_url = os.getenv('LINE_BOT_API_URL', 'https://api.line.me/v2/bot')  # LINE Message API 的基本 URL
+line_notify_token = os.getenv('LINE_NOTIFY_TOKEN', None)  # LINE Notify 的 token (如果使用)
+
+# 預設選單ID (如果固定使用同一個圖文選單)
+default_rich_menu_id = os.getenv('DEFAULT_RICH_MENU_ID', '16633875')  # 預設的圖文選單ID
+
+# 重要用戶 ID
+teacher_user_id = os.getenv('TEACHER_USER_ID', None)  # 老師/管理員的 LINE 用戶 ID
+admin_user_ids = os.getenv('ADMIN_USER_IDS', '').split(',')  # 多位管理員的 LINE 用戶 ID，以逗號分隔
+
 # Google API 相關金鑰 (從 Render 環境變數讀取)
 # 請確保這些 Key 與您在 Render 設定的名稱完全一致
 google_calendar_id = os.getenv('GOOGLE_CALENDAR_ID', None)
 # google_client_id = os.getenv('GOOGLE_CLIENT_ID', None) # GOOGLE_CLIENT_ID 和 SECRET 通常包含在 credentials.json 中，或者用於不同的 OAuth 流程
 # google_client_secret = os.getenv('GOOGLE_CLIENT_SECRET', None)
 google_credentials_json_path = os.getenv('GOOGLE_CREDENTIALS_JSON', None) # 通常會是 JSON 檔案的路徑或內容字串
-
-# 管理員/老師的 Line User ID (用於發送通知等)
-teacher_user_id = os.getenv('TEACHER_USER_ID', None)
 
 # --- 基本設定 ---
 app = Flask(__name__)
@@ -442,57 +450,63 @@ def le_message(event):
         reply_content = []
 
         if "法事" in msg:
-            reply_content.append(create_ritual_selection_message(user_id))
-        if "問事" in msg or "命理" in msg:
+            # 法事服務，收起圖文選單
             unlink_rich_menu_from_user(user_id)
+            reply_content.append(create_ritual_selection_message(user_id))
+        elif "問事" in msg or "命理" in msg:
+            # 問事/命理服務，收起圖文選單
+            unlink_rich_menu_from_user(user_id)
+            # 僅發送問事須知，不添加服務結束提醒
             reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
-            reply_content.append(create_text_with_menu_button(
-                "🙏 感恩您的提問！老師通常三天內會回覆您，如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
-                alt_text="服務結束提醒"
-            ))
-        if "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
-            link_rich_menu_to_user(user_id, "16633875")
+        elif "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
+            # 顯示預約選單，重新連接預設圖文選單
+            rich_menu_id = get_default_rich_menu_id()
+            link_rich_menu_to_user(user_id, rich_menu_id)
             reply_content.append(create_how_to_book_flex())
-        if "收驚" in msg:
+        elif "收驚" in msg:
+            # 收驚服務，收起圖文選單
             unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text="【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
                 alt_text="服務結束提醒"
             ))
-        if "卜卦" in msg:
+        elif "卜卦" in msg:
+            # 卜卦服務，收起圖文選單
             unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text="【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
                 alt_text="服務結束提醒"
             ))
-        if "風水" in msg:
+        elif "風水" in msg:
+            # 風水服務，收起圖文選單
+            unlink_rich_menu_from_user(user_id)
             reply_content.append(TextMessage(text="【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
             reply_content.append(create_text_with_menu_button(
                 "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
                 alt_text="服務結束提醒"
             ))
-        if "匯款" in msg or "匯款資訊" in msg or "帳號" in msg:
+        elif "匯款" in msg or "匯款資訊" in msg or "帳號" in msg:
             payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
             reply_content.append(create_text_with_menu_button(payment_text, alt_text="匯款資訊"))
-        if "最新消息" in msg:
+        elif "最新消息" in msg:
             reply_content.append(create_text_with_menu_button(other_services_keywords["最新消息"], alt_text="最新消息"))
-        if "探索自我" in msg or "順流致富" in msg:
+        elif "探索自我" in msg or "順流致富" in msg:
             explore_text = other_services_keywords["探索自我"].replace("[請在此處放入測驗連結]", "(測驗連結待提供)")
             reply_content.append(create_text_with_menu_button(explore_text, alt_text="探索自我"))
-        if "開運產品" in msg or "開運物" in msg:
+        elif "開運產品" in msg or "開運物" in msg:
             text_to_reply = other_services_keywords["開運產品"]
             reply_content.append(create_text_with_menu_button(text_to_reply, alt_text="開運產品"))
-        if "課程" in msg:
+        elif "課程" in msg:
             reply_content.append(create_text_with_menu_button(other_services_keywords["課程介紹"], alt_text="課程介紹"))
-        if "ig" in msg:
+        elif "ig" in msg:
             reply_content.append(create_text_with_menu_button(other_services_keywords["IG"], alt_text="IG"))
-        if "抖音" in msg:
+        elif "抖音" in msg:
             reply_content.append(create_text_with_menu_button(other_services_keywords["抖音"], alt_text="抖音"))
-        if "運勢文" in msg:
+        elif "運勢文" in msg:
             reply_content.append(create_text_with_menu_button(other_services_keywords["運勢文"], alt_text="運勢文"))
-        if "查詢可預約時間" in msg:
+        elif "查詢可預約時間" in msg:
             if google_calendar_id and google_credentials_json_path:
                 try:
                     calendar_response_text = "查詢可預約時間功能開發中..."
@@ -511,14 +525,14 @@ def le_message(event):
 
         # --- 發送回覆 ---
         try:
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=reply_content
-                        )
-                    )
-            except Exception as e:
-                logging.error(f"Error sending reply message: {e}")
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_content
+                )
+            )
+        except Exception as e:
+            logging.error(f"Error sending reply message: {e}")
 
 # --- 處理 Postback 事件（包含所有按鈕回調） ---
 @handler.add(PostbackEvent)
@@ -561,12 +575,12 @@ def handle_postback(event):
                     logging.info(f"初始化用戶狀態: {user_states[user_id]}")
                 
                 # 切換選擇狀態：如果已選擇則移除，如果未選擇則添加
-                    current_selection = user_states[user_id]["data"]["selected_rituals"]
-                    if selected_ritual in current_selection:
-                        current_selection.remove(selected_ritual)
+                current_selection = user_states[user_id]["data"]["selected_rituals"]
+                if selected_ritual in current_selection:
+                    current_selection.remove(selected_ritual)
                     logging.info(f"從選擇中移除: {selected_ritual}")
-                    else:
-                        current_selection.append(selected_ritual)
+                else:
+                    current_selection.append(selected_ritual)
                     logging.info(f"添加到選擇: {selected_ritual}")
                 
                 # 立即發送更新後的法事選擇界面
@@ -619,11 +633,11 @@ def handle_postback(event):
                         price = SERVICE_FEES.get(item, "洽詢")
                         confirmation_text += f"• {item} - NT${price}\n"
                     confirmation_text += f"\n總費用：NT${total_price}\n"
-                    confirmation_text += "\n法事將於下個月由老師擇日統一進行。\n"
+                    confirmation_text += "\n法事將於每月老師選擇良辰吉日統一進行，若這個月已完成，會安排在下個月。\n"
                     confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n"
                     confirmation_text += f"\n🌟銀行代碼：{payment_details['bank_code']}  {payment_details['bank_name']}\n"
                     confirmation_text += f"🌟帳號：{payment_details['account_number']}\n"
-                    confirmation_text += "\n🙏 感恩您的信任！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊"
+                    confirmation_text += "\n🙏 感恩您的信任！老師會在三天內與您聯繫確認，祝福您一切順心如意，運勢亨通！✨ 還有其他問題或需求嗎？"
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
@@ -639,12 +653,12 @@ def handle_postback(event):
         # --- 處理其他 action ---
         elif action == 'show_ritual_selection':
             ritual_menu = create_ritual_selection_message(user_id)
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
                     messages=[ritual_menu]
-                        )
-                    )
+                )
+            )
             return
 
 # --- 處理加入好友事件 ---
@@ -928,6 +942,22 @@ def link_rich_menu_to_user(user_id, rich_menu_id):
         line_bot_api = MessagingApi(api_client)
         line_bot_api.link_rich_menu_to_user(user_id, rich_menu_id)
 
+def get_default_rich_menu_id():
+    """獲取目前設定的預設圖文選單 ID"""
+    # 嘗試從環境變數讀取預設選單 ID
+    if default_rich_menu_id and default_rich_menu_id != '16633875':  # 檢查是否是預設值
+        return default_rich_menu_id
+        
+    # 否則通過 API 獲取
+    try:
+        with ApiClient(configuration) as api_client:
+            line_bot_api = MessagingApi(api_client)
+            return line_bot_api.get_default_rich_menu_id().richMenuId
+    except Exception as e:
+        logging.error(f"獲取預設圖文選單ID失敗: {e}")
+        # 返回固定的備用 ID
+        return "16633875"  # 這是您在程式碼中已經使用的固定選單ID
+
 # --- 主程式入口 ---
 if __name__ == "__main__":
     # 設定 Log 等級
@@ -942,7 +972,7 @@ if __name__ == "__main__":
 
     # --- 新增：嘗試設定圖文選單 --- 
     try:
-    setup_rich_menu()
+        setup_rich_menu()
     except Exception as e:
         logging.error(f"Failed to setup rich menu during startup: {e}")
     # -----------------------------
