@@ -645,7 +645,7 @@ def handle_postback(event):
                     confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n"
                     confirmation_text += f"\n🌟銀行代碼：{payment_details['bank_code']}  {payment_details['bank_name']}\n"
                     confirmation_text += f"🌟帳號：{payment_details['account_number']}\n"
-                    confirmation_text += "\n🙏 感恩您的信任！老師會在三天內與您聯繫確認，祝福您一切順心如意，運勢亨通！✨ 還有其他問題或需求嗎？"
+                    confirmation_text += "\n🙏 感恩您的信任！老師會在三天內與您聯繫確認，祝福您一切順心如意，運勢亨通！✨"
                     line_bot_api.reply_message(
                         ReplyMessageRequest(
                             reply_token=event.reply_token,
