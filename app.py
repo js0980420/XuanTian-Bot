@@ -942,13 +942,13 @@ def calculate_total_price(selected_rituals):
 
 def unlink_rich_menu_from_user(user_id):
     with ApiClient(configuration) as api_client:
-        rich_menu_api = RichMenuApi(api_client)
-        rich_menu_api.unlink_rich_menu_from_user(user_id)
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.unlink_rich_menu_from_user(user_id)
 
 def link_rich_menu_to_user(user_id, rich_menu_id):
     with ApiClient(configuration) as api_client:
-        rich_menu_api = RichMenuApi(api_client)
-        rich_menu_api.link_rich_menu_to_user(user_id, rich_menu_id)
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.link_rich_menu_to_user(user_id, rich_menu_id)
 
 def get_default_rich_menu_id():
     """獲取目前設定的預設圖文選單 ID"""
