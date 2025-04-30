@@ -47,7 +47,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 # ----------------------
 
-#測試自動
+#測試自
 # --- 載入環境變數 ---
 # 建議將您的金鑰和設定存在 .env 檔案或 Render 的環境變數中
 load_dotenv()
