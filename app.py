@@ -29,9 +29,9 @@ from linebot.v3.messaging import (
     FlexBubble, FlexBox, FlexText, FlexButton, FlexSeparator, FlexImage,
     URIAction, MessageAction,
     TemplateMessage, ButtonsTemplate,
-    PostbackAction
+    PostbackAction,
+    RichMenuApi
 )
-from linebot.v3.messaging.rich_menu_api import RichMenuApi
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
