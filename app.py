@@ -32,7 +32,8 @@ from linebot.v3.messaging import (
     URIAction, MessageAction, # MessageAction 用於按鈕觸發文字訊息
     # --- 匯入 TemplateMessage 和 ButtonsTemplate ---
     TemplateMessage, ButtonsTemplate,
-    PostbackAction
+    PostbackAction,
+    RichMenuApi
 )
 from linebot.v3.webhooks import (
     MessageEvent,
@@ -934,13 +935,13 @@ def calculate_total_price(selected_rituals):
 
 def unlink_rich_menu_from_user(user_id):
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.unlink_rich_menu_from_user(user_id)
+        rich_menu_api = RichMenuApi(api_client)
+        rich_menu_api.unlink_rich_menu_from_user(user_id)
 
 def link_rich_menu_to_user(user_id, rich_menu_id):
     with ApiClient(configuration) as api_client:
-        line_bot_api = MessagingApi(api_client)
-        line_bot_api.link_rich_menu_to_user(user_id, rich_menu_id)
+        rich_menu_api = RichMenuApi(api_client)
+        rich_menu_api.link_rich_menu_to_user(user_id, rich_menu_id)
 
 def get_default_rich_menu_id():
     """獲取目前設定的預設圖文選單 ID"""
