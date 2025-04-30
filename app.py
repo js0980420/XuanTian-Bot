@@ -914,6 +914,16 @@ def calculate_total_price(selected_rituals):
     total = sum(SERVICE_FEES.get(item, 0) for item in items)
     return total, list(items)
 
+def unlink_rich_menu_from_user(user_id):
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.unlink_rich_menu_from_user(user_id)
+
+def link_rich_menu_to_user(user_id, rich_menu_id):
+    with ApiClient(configuration) as api_client:
+        line_bot_api = MessagingApi(api_client)
+        line_bot_api.link_rich_menu_to_user(user_id, rich_menu_id)
+
 # --- 主程式入口 ---
 if __name__ == "__main__":
     # 設定 Log 等級
