@@ -880,6 +880,15 @@ def create_ritual_selection_message(user_id):
         height="sm",
         color="#555555"
     ))
+
+    # 新增說明文字
+    description = FlexText(
+        text="【法事項目分類說明】\n官司、考運、身體、小人 → 冤親\n財運、事業、防破財 → 補財庫\n感情、貴人、客戶、桃花 → 補桃花\n\n如有特別因素請私訊老師👋\n\n請勾選您要預約的法事項目，可複選：",
+        size="sm",
+        color="#333333",
+        wrap=True
+    )
+
     bubble = FlexBubble(
         header=FlexBox(
             layout="vertical",
@@ -888,7 +897,7 @@ def create_ritual_selection_message(user_id):
         body=FlexBox(
             layout="vertical",
             spacing="md",
-            contents=[FlexText(text="請勾選您要預約的法事項目，可複選：", size="sm", color="#333333")] + buttons
+            contents=[description] + buttons
         ),
         styles={"header": {"backgroundColor": "#EFEBE4"}, "body": {"paddingAll": "lg"}}
     )
