@@ -26,11 +26,8 @@ from linebot.v3.messaging import (
     TextMessage,
     FlexMessage,
     FlexContainer,
-    # --- 匯入 Flex Message 會用到的元件 ---
     FlexBubble, FlexBox, FlexText, FlexButton, FlexSeparator, FlexImage,
-    # --- 匯入 URIAction 和 MessageAction ---
-    URIAction, MessageAction, # MessageAction 用於按鈕觸發文字訊息
-    # --- 匯入 TemplateMessage 和 ButtonsTemplate ---
+    URIAction, MessageAction,
     TemplateMessage, ButtonsTemplate,
     PostbackAction,
     RichMenuApi
