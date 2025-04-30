@@ -242,20 +242,20 @@ def create_ritual_prices_flex():
 
     # *** 加入按鈕到 Footer ***
     footer_buttons = [
-        # 移除 "了解匯款資訊" 按鈕
-        # FlexButton(
-        #     action=MessageAction(label='了解匯款資訊', text='匯款資訊'),
-        #     style='primary',
-        #     color='#8C6F4E',
-        #     height='sm',
-        #     margin='md'
-        # ),
-        # FlexSeparator(margin='md'), # 分隔線
         FlexButton(
-            action=create_return_to_menu_button(), # 直接傳入 MessageAction 物件
-            style='link', # 使用 link 樣式
+            action=PostbackAction(
+                label="預約法事",
+                data=json.dumps({"action": "show_ritual_selection"}, ensure_ascii=False)
+            ),
+            style="primary",
+            color="#8C6F4E",
+            height="sm"
+        ),
+        FlexButton(
+            action=create_return_to_menu_button(),
+            style='link',
             height='sm',
-            color='#555555' # 深灰色文字
+            color='#555555'
         )
     ]
 
@@ -440,7 +440,7 @@ def le_message(event):
         reply_content = []
 
         if "法事" in msg:
-            reply_content.append(create_ritual_prices_flex())
+            reply_content.append(create_ritual_selection_message(user_id))
         if "問事" in msg or "命理" in msg:
             reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
             reply_content.append(create_text_with_menu_button(
@@ -633,7 +633,15 @@ def handle_postback(event):
                 reply_content = TextMessage(text="請先選擇法事項目。")
                 
         # --- 處理其他 action ---
-        # ... 保留其他現有代碼 ...
+        elif action == 'show_ritual_selection':
+            ritual_menu = create_ritual_selection_message(user_id)
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[ritual_menu]
+                )
+            )
+            return
 
 # --- 處理加入好友事件 ---
 @handler.add(FollowEvent)
