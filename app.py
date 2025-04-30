@@ -7,6 +7,7 @@ from dotenv import load_dotenv # 建議使用 python-dotenv 管理環境變數
 import time
 import traceback
 from datetime import datetime
+import requests
 
 from flask import Flask, request, abort
 
