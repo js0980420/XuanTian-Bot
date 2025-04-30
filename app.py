@@ -945,6 +945,3 @@ if __name__ == "__main__":
     logging.info(f"Starting Flask server on port {port}")
     # 確保在生產環境中 debug=False
     app.run(host='0.0.0.0', port=port, debug=False)
-
-RENDER_API_KEY = os.getenv('RENDER_API_KEY')
-RENDER_SERVICE_ID = os.getenv('RENDER_SERVICE_ID')
