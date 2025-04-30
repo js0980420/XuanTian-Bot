@@ -631,9 +631,7 @@ def handle_postback(event):
                     if user_id in user_states:
                         del user_states[user_id]
                     return
-                else:
-                reply_content = TextMessage(text="請先選擇法事項目。")
-                
+
         # --- 處理其他 action ---
         elif action == 'show_ritual_selection':
             ritual_menu = create_ritual_selection_message(user_id)
