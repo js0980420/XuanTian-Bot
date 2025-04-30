@@ -506,14 +506,14 @@ def le_message(event):
 
         # --- 發送回覆 ---
         try:
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
-                            messages=reply_content
-                        )
-                    )
-            except Exception as e:
-                logging.error(f"Error sending reply message: {e}")
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=reply_content
+                )
+            )
+        except Exception as e:
+            logging.error(f"Error sending reply message: {e}")
 
 # --- 處理 Postback 事件（包含所有按鈕回調） ---
 @handler.add(PostbackEvent)
@@ -556,12 +556,12 @@ def handle_postback(event):
                     logging.info(f"初始化用戶狀態: {user_states[user_id]}")
                 
                 # 切換選擇狀態：如果已選擇則移除，如果未選擇則添加
-                    current_selection = user_states[user_id]["data"]["selected_rituals"]
-                    if selected_ritual in current_selection:
-                        current_selection.remove(selected_ritual)
+                current_selection = user_states[user_id]["data"]["selected_rituals"]
+                if selected_ritual in current_selection:
+                    current_selection.remove(selected_ritual)
                     logging.info(f"從選擇中移除: {selected_ritual}")
-                    else:
-                        current_selection.append(selected_ritual)
+                else:
+                    current_selection.append(selected_ritual)
                     logging.info(f"添加到選擇: {selected_ritual}")
                 
                 # 立即發送更新後的法事選擇界面
@@ -636,12 +636,12 @@ def handle_postback(event):
         # --- 處理其他 action ---
         elif action == 'show_ritual_selection':
             ritual_menu = create_ritual_selection_message(user_id)
-                    line_bot_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=event.reply_token,
+            line_bot_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
                     messages=[ritual_menu]
-                        )
-                    )
+                )
+            )
             return
 
 # --- 處理加入好友事件 ---
@@ -929,7 +929,7 @@ if __name__ == "__main__":
 
     # --- 新增：嘗試設定圖文選單 --- 
     try:
-    setup_rich_menu()
+        setup_rich_menu()
     except Exception as e:
         logging.error(f"Failed to setup rich menu during startup: {e}")
     # -----------------------------
