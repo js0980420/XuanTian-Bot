@@ -131,7 +131,8 @@ CONSULTATION_INFO_TEXT = '''【問事/命理諮詢須知】
 🌟銀行：822 中國信託
 🌟帳號：510540490990
 
-感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。資料留完後請耐心等待，通常三天內會完成回覆，感恩🙏'''
+感恩😊 老師收到您的完整資料與匯款後，會以文字+語音訊息回覆您。
+資料留完後請耐心等待，老師通常三天內會完成回覆，感恩🙏''' # 移除最後的詢問句
 
 # --- 按鈕產生函式 ---
 def create_return_to_menu_button():
@@ -230,16 +231,26 @@ def create_ritual_prices_flex():
          contents.append(FlexText(text='⚜️ 三合一/一條龍包含：冤親債主、補桃花、補財庫。', size='sm', color='#888888', wrap=True, margin='md'))
 
     contents.append(FlexSeparator(margin='xl'))
+
+    # *** 直接顯示匯款資訊 ***
+    contents.append(FlexText(text='【匯款資訊】', weight='bold', size='md', margin='lg'))
+    contents.append(FlexText(
+        text=f"🌟銀行：{payment_details['bank_code']} {payment_details['bank_name']}\n🌟帳號：{payment_details['account_number']}",
+        size='sm', color='#555555', wrap=True, margin='sm'
+    ))
+    contents.append(FlexText(text='（匯款後請告知末五碼以便核對）', size='xs', color='#888888', margin='sm'))
+
     # *** 加入按鈕到 Footer ***
     footer_buttons = [
-        FlexButton(
-            action=MessageAction(label='了解匯款資訊', text='匯款資訊'),
-            style='primary',
-            color='#8C6F4E',
-            height='sm',
-            margin='md'
-        ),
-        FlexSeparator(margin='md'), # 分隔線
+        # 移除 "了解匯款資訊" 按鈕
+        # FlexButton(
+        #     action=MessageAction(label='了解匯款資訊', text='匯款資訊'),
+        #     style='primary',
+        #     color='#8C6F4E',
+        #     height='sm',
+        #     margin='md'
+        # ),
+        # FlexSeparator(margin='md'), # 分隔線
         FlexButton(
             action=create_return_to_menu_button(), # 直接傳入 MessageAction 物件
             style='link', # 使用 link 樣式
@@ -314,6 +325,21 @@ def create_how_to_book_flex():
                     style='secondary',
                     color='#EFEBE4',
                     height='sm'
+                ),
+                 FlexSeparator(margin='md'),
+                # 新增按鈕
+                FlexButton(
+                    action=MessageAction(label='最新消息', text='最新消息'),
+                    style='link',
+                    height='sm',
+                    color='#555555'
+                ),
+                FlexButton(
+                    # 這裡暫時使用 MessageAction，未來可改為 URIAction 跳轉測驗網址
+                    action=MessageAction(label='探索自我(順流致富)', text='探索自我'),
+                    style='link',
+                    height='sm',
+                    color='#555555'
                 ),
                 FlexSeparator(margin='md'),
                 FlexButton(
@@ -413,13 +439,26 @@ def le_message(event):
 
         # --- 問事流程優先 ---
         if user_message in ["問事", "命理諮詢"]:
+            # 回覆問事須知文字，並附加返回主選單按鈕
+            # reply_content = create_text_with_menu_button(CONSULTATION_INFO_TEXT, alt_text="問事須知") # 移除此行
+            # 注意：create_text_with_menu_button 限制文字 160 字，所以這裡可能只顯示部分內容
+            # 如果要顯示完整內容並加按鈕，需要改用 Flex Message 或分開回覆
+            # 為了確保完整顯示，我們分開回覆：
+            consultation_message = TextMessage(text=CONSULTATION_INFO_TEXT)
+            follow_up_message = TemplateMessage(
+                alt_text="還有需要什麼服務嗎？",
+                template=ButtonsTemplate(
+                    text="還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！", # 將詢問句移到這裡
+                    actions=[create_return_to_menu_button()]
+                )
+            )
             line_bot_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=event.reply_token,
-                    messages=[TextMessage(text=CONSULTATION_INFO_TEXT)]
+                    messages=[consultation_message, follow_up_message]
                 )
             )
-            return
+            return # 已回覆，結束處理
 
         # --- 根據關鍵字回覆 ---
         if user_message in ["服務", "服務項目", "功能", "選單", "menu"]:
@@ -486,15 +525,14 @@ def le_message(event):
             )
 
         else:
-            # --- 預設回覆 (如果需要，也可以加上返回按鈕) ---
-            # default_text = "收到您的訊息！\n如果您需要服務，可以輸入「服務項目」查看選單，或直接說明您的需求喔。"
-            # reply_content = create_text_with_menu_button(default_text, alt_text="收到訊息")
+            # --- 預設回覆 --- 
+            default_reply_text = "老師通常三天內會回覆您，感恩您的耐心等候。"
+            reply_content = create_text_with_menu_button(default_reply_text, alt_text="收到訊息")
+            # # --- 將未知訊息轉發給老師 (範例) ---
+            # # notify_teacher(f"收到無法自動處理的訊息：\n\n{user_message}")
+            # pass # 目前設定為不回覆未知訊息
 
-            # --- 將未知訊息轉發給老師 (範例) ---
-            # notify_teacher(f"收到無法自動處理的訊息：\n\n{user_message}")
-            pass # 目前設定為不回覆未知訊息
-
-        # --- 發送回覆 ---
+        # --- 發送回覆 --- (處理所有設定 reply_content 的情況)
         if reply_content:
             try:
                 line_bot_api.reply_message(
