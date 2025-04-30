@@ -451,13 +451,15 @@ def le_message(event):
             # 法事服務，暫時不收起圖文選單
             # unlink_rich_menu_from_user(user_id)
             reply_content.append(create_ritual_selection_message(user_id))
+            # 加入亲切提醒，告知如何手动收合选单
+            reply_content.append(TextMessage(text="💡 小贴士：需要输入时，点击输入框旁边的键盘图标，就能暂时收合选单哦！期待您的回复 😊"))
         elif "問事" in msg or "命理" in msg:
             # 問事/命理服務，暫時不收起圖文選單
             # unlink_rich_menu_from_user(user_id)
             # 發送問事須知
             reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
-            # 加入親切提醒，告知如何手動收合選單
-            reply_content.append(TextMessage(text="💡 小提醒：如果需要打字，可以點一下輸入框旁邊的鍵盤圖示，就能暫時收合下方選單喔！😊"))
+            # 加入亲切提醒，告知如何手动收合选单
+            reply_content.append(TextMessage(text="💡 小提醒：如果需要打字，可以点一下输入框旁边的键盘图示，就能暂时收合下方选单喔！😊"))
         elif "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
             # 顯示預約選單，重新連接預設圖文選單 (保留此功能)
             rich_menu_id = get_default_rich_menu_id()
@@ -466,26 +468,32 @@ def le_message(event):
         elif "收驚" in msg:
             # 收驚服務，暫時不收起圖文選單
             # unlink_rich_menu_from_user(user_id)
-            reply_content.append(TextMessage(text="【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+            reply_content.append(TextMessage(text="【收惊服务说明】\n收惊适合：惊吓、睡不好、精神不安等状况。\n请详细说明您的状况与需求，老师会依情况协助。\n\n老师通常三天内会回复您，感恩您的耐心等候。"))
+            # 加入亲切提醒，告知如何手动收合选单
+            reply_content.append(TextMessage(text="💡 温馨提示：需要输入详细信息时，点一下聊天框旁的键盘图标，可以暂时隐藏选单，输入更方便哦！✨"))
             reply_content.append(create_text_with_menu_button(
-                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
-                alt_text="服務結束提醒"
+                "🙏 感恩您的提问！如还有其他需求，欢迎点选下方『返回主选单』继续提问或预约其他服务 😊",
+                alt_text="服务结束提醒"
             ))
         elif "卜卦" in msg:
             # 卜卦服務，暫時不收起圖文選單
             # unlink_rich_menu_from_user(user_id)
-            reply_content.append(TextMessage(text="【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+            reply_content.append(TextMessage(text="【卜卦服务说明】\n卜卦适合：人生抉择、疑难杂症、重要决定等。\n请详细说明您的问题与背景，老师会依情况协助。\n\n老师通常三天内会回复您，感恩您的耐心等候。"))
+            # 加入亲切提醒，告知如何手动收合选单
+            reply_content.append(TextMessage(text="💡 贴心小提示：想要输入问题细节时，点击输入框旁的键盘图标，就能让选单暂时收起，让您更方便输入呢！☺️"))
             reply_content.append(create_text_with_menu_button(
-                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
-                alt_text="服務結束提醒"
+                "🙏 感恩您的提问！如还有其他需求，欢迎点选下方『返回主选单』继续提问或预约其他服务 😊",
+                alt_text="服务结束提醒"
             ))
         elif "風水" in msg:
             # 風水服務，暫時不收起圖文選單
             # unlink_rich_menu_from_user(user_id)
-            reply_content.append(TextMessage(text="【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
+            reply_content.append(TextMessage(text="【风水服务说明】\n风水适合：居家、办公室、店面等空间调理。\n请详细说明您的需求与空间状况，老师会依情况协助。\n\n老师通常三天内会回复您，感恩您的耐心等候。"))
+            # 加入亲切提醒，告知如何手动收合选单
+            reply_content.append(TextMessage(text="💡 小技巧：需要输入详细情况时，轻触输入框旁的键盘按钮，即可暂时隐藏选单，输入完毕后选单会自动恢复哦！感恩您的信任 🙏"))
             reply_content.append(create_text_with_menu_button(
-                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
-                alt_text="服務結束提醒"
+                "🙏 感恩您的提问！如还有其他需求，欢迎点选下方『返回主选单』继续提问或预约其他服务 😊",
+                alt_text="服务结束提醒"
             ))
         elif "匯款" in msg or "匯款資訊" in msg or "帳號" in msg:
             payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
