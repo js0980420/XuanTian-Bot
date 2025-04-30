@@ -443,24 +443,30 @@ def le_message(event):
             reply_content.append(create_ritual_prices_flex())
         if "問事" in msg or "命理" in msg:
             reply_content.append(TextMessage(text=CONSULTATION_INFO_TEXT))
-            reply_content.append(TemplateMessage(
-                alt_text="還有需要什麼服務嗎？",
-                template=ButtonsTemplate(
-                    text="還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！",
-                    actions=[create_return_to_menu_button()]
-                )
+            reply_content.append(create_text_with_menu_button(
+                "🙏 感恩您的提問！老師通常三天內會回覆您，如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
+                alt_text="服務結束提醒"
             ))
         if "預約" in msg or "如何預約" in msg or "命理問事" in msg or "算命" in msg:
             reply_content.append(create_how_to_book_flex())
         if "收驚" in msg:
             reply_content.append(TextMessage(text="【收驚服務說明】\n收驚適合：驚嚇、睡不好、精神不安等狀況。\n請詳細說明您的狀況與需求，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
-            reply_content.append(create_how_to_book_flex())
+            reply_content.append(create_text_with_menu_button(
+                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
+                alt_text="服務結束提醒"
+            ))
         if "卜卦" in msg:
             reply_content.append(TextMessage(text="【卜卦服務說明】\n卜卦適合：人生抉擇、疑難雜症、重要決定等。\n請詳細說明您的問題與背景，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
-            reply_content.append(create_how_to_book_flex())
+            reply_content.append(create_text_with_menu_button(
+                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
+                alt_text="服務結束提醒"
+            ))
         if "風水" in msg:
             reply_content.append(TextMessage(text="【風水服務說明】\n風水適合：居家、辦公室、店面等空間調理。\n請詳細說明您的需求與空間狀況，老師會依情況協助。\n\n老師通常三天內會回覆您，感恩您的耐心等候。"))
-            reply_content.append(create_how_to_book_flex())
+            reply_content.append(create_text_with_menu_button(
+                "🙏 感恩您的提問！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊",
+                alt_text="服務結束提醒"
+            ))
         if "匯款" in msg or "匯款資訊" in msg or "帳號" in msg:
             payment_text = f"""【匯款資訊】\n🌟 匯款帳號：\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n\n（匯款後請告知末五碼以便核對）"""
             reply_content.append(create_text_with_menu_button(payment_text, alt_text="匯款資訊"))
@@ -609,25 +615,20 @@ def handle_postback(event):
                     confirmation_text += f"\n總費用：NT${total_price}\n"
                     confirmation_text += "\n法事將於下個月由老師擇日統一進行。\n"
                     confirmation_text += "請完成匯款後告知末五碼，以便老師為您安排。\n"
-                    confirmation_text += "老師通常三天內會回覆您，感恩您的耐心等候。\n"
-                    confirmation_text += f"\n銀行代碼：{payment_details['bank_code']}\n銀行名稱：{payment_details['bank_name']}\n帳號：{payment_details['account_number']}\n"
-                    confirmation_text += "\n還有其他需要服務的地方嗎？歡迎點選下方按鈕回主選單或繼續提問！"
-                    # 回覆訊息時，附加返回主選單按鈕
-                    try:
-                        line_bot_api.reply_message(
-                            ReplyMessageRequest(
-                                reply_token=event.reply_token,
-                                messages=[
-                                    TextMessage(text=confirmation_text),
-                                    create_how_to_book_flex()
-                                ]
-                            )
+                    confirmation_text += f"\n🌟銀行代碼：{payment_details['bank_code']}  {payment_details['bank_name']}\n"
+                    confirmation_text += f"🌟帳號：{payment_details['account_number']}\n"
+                    confirmation_text += "\n🙏 感恩您的信任！如還有其他需求，歡迎點選下方『返回主選單』繼續提問或預約其他服務 😊"
+                    line_bot_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=event.reply_token,
+                            messages=[
+                                create_text_with_menu_button(confirmation_text, alt_text="法事預約完成")
+                            ]
                         )
-                        if user_id in user_states:
-                            del user_states[user_id]
-                        return
-                    except Exception as e:
-                        logging.error(f"回覆確認訊息時出錯: {e}")
+                    )
+                    if user_id in user_states:
+                        del user_states[user_id]
+                    return
             else:
                 reply_content = TextMessage(text="請先選擇法事項目。")
                 
